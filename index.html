@@ -3,18 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>代充訂單即時對帳監控（Realtime 完全體版）</title>
+    <title>代充訂單即時對帳監控（完全體對帳版）</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; background: #f5f5f7; }
         .container { max-width: 1400px; margin: 0 auto; }
-        .header-zone { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        h2 { color: #333; margin: 0; display: flex; align-items: center; gap: 10px; }
-        
-        /* 炫砲的實時同步燈號，提示業務們目前正連線中 */
-        .sync-indicator { font-size: 14px; background: #e3fbe3; color: #1e7e34; padding: 6px 12px; border-radius: 20px; font-weight: 600; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
-        .sync-dot { width: 8px; height: 8px; background-color: #28a745; border-radius: 50%; display: inline-block; animation: blink 1.5s infinite ease-in-out; }
-
+        h2 { color: #333; display: flex; align-items: center; gap: 10px; }
+        .btn-refresh { padding: 10px 20px; background: #0071e3; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; margin-bottom: 20px; transition: background 0.2s; }
+        .btn-refresh:hover { background: #0077ed; }
         table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
         th, td { padding: 12px 14px; text-align: left; border-bottom: 1px solid #eee; font-size: 14px; }
         th { background-color: #f9f9fb; color: #666; font-weight: 600; }
@@ -27,21 +23,13 @@
         .amount { font-weight: 600; color: #d9383a; }
         #loading { color: #666; font-style: italic; margin-bottom: 15px; }
         code { background: #f4f4f4; padding: 2px 6px; border-radius: 4px; font-family: monospace; }
-
-        @keyframes blink {
-            0% { opacity: 0.4; }
-            50% { opacity: 1; }
-            100% { opacity: 0.4; }
-        }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <div class="header-zone">
-            <h2>📋 代充訂單即時對帳單 (財務唯讀面板)</h2>
-            <div class="sync-indicator"><span class="sync-dot"></span>🟢 雲端 Realtime 監聽中</div>
-        </div>
+        <h2>📋 代充訂單即時對帳單 (財務唯讀面板)</h2>
+        <button class="btn-refresh" onclick="fetchOrders()">🔄 重新整理財務資料</button>
         <div id="loading">最新對帳資料載入中...</div>
 
         <table id="orders-table" style="display: none;">
@@ -64,21 +52,17 @@
     </div>
 
     <script>
-        // 🎯 修正：替換回完全精準對齊你後台的 Supabase 專案網址
-        const SUPABASE_URL = 'https://sizlxoeopnbuxkyrtngd.supabase.co';
+        const SUPABASE_URL = 'https://sizlxeoconbuxkyrtnqd.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpemx4ZW9jb25idXhreXJ0bnFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3NTg4OTgsImV4cCI6MjA5NDMzNDg5OH0.Lu6f3HgJ_wsM-pLhK0j3tNbK7hu_1E19rj63iVn0qqI';
 
         // 初始化 Supabase 
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         async function fetchOrders() {
-            // 背景自動刷新時不隱藏表格，避免網頁閃爍
-            const isFirstLoad = document.getElementById('orders-body').children.length === 0;
-            if (isFirstLoad) {
-                document.getElementById('loading').style.display = 'block';
-                document.getElementById('orders-table').style.display = 'none';
-            }
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('orders-table').style.display = 'none';
 
+            // 🎯 【修改點一】：SQL 語句補齊你 orders 表裡的所有財務對帳欄位
             const { data, error } = await supabaseClient
                 .from('orders')
                 .select('order_no, uid, nickname, server_str, realname_status, item_name, final_amount, payment_method, extra_gifts')
@@ -105,6 +89,7 @@
                     statusClass = 'status-warning';
                 }
 
+                // 🎯 【修改點二】：動態將所有新增欄位塞進對應的表格 td 中
                 tr.innerHTML = `
                     <td><strong>${order.order_no || '---'}</strong></td>
                     <td><code>${order.uid || '---'}</code></td>
@@ -122,20 +107,7 @@
             document.getElementById('orders-table').style.display = 'table';
         }
 
-        // 🚀【Realtime 管道開通】：地端小鷹只要一更新實名狀態，網頁秒速同步變色
-        const ordersListener = supabaseClient
-            .channel('public-orders-realtime')
-            .on(
-                'postgres_changes',
-                { event: '*', schema: 'public', table: 'orders' },
-                (payload) => {
-                    console.log('⚡ 偵測到資料庫變動，正在即時同步畫面...');
-                    fetchOrders(); 
-                }
-            )
-            .subscribe();
-
-        // 網頁開啟自動同步第一次
+        // 網頁開啟自動同步
         fetchOrders();
     </script>
 </body>
