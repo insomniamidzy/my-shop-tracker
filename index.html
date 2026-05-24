@@ -51,8 +51,8 @@
             <div class="user-zone">
                 <label for="operator-select">👤 當前操作業務：</label>
                 <select id="operator-select" class="user-select" onchange="fetchOrders()">
-                    <option value="業務A">業務 A</option>
-                    <option value="業務B">業務 B</option>
+                    <option value="葉子">葉子</option>
+                    <option value="牧宣">牧宣</option>
                 </select>
             </div>
         </div>
@@ -69,6 +69,7 @@
                     <th>購買品項</th>
                     <th>實付金額</th>
                     <th>付款方式</th>
+                    <th>備註 / 贈品</th>
                     <th>實名狀態</th>
                     <th>鎖定狀態</th>
                     <th>動作</th>
@@ -101,7 +102,7 @@
             // 🎯 撈取欄位，包含新設計的鎖定與業務名稱
             const { data, error } = await supabaseClient
                 .from('orders')
-                .select('id, order_no, uid, nickname, server_str, realname_status, item_name, final_amount, payment_method, is_locked, operator')
+                .select('id, order_no, uid, nickname, server_str, realname_status, item_name, final_amount, payment_method, extra_gifts, is_locked, operator')
                 .order('id', { ascending: false });
 
             document.getElementById('loading').style.display = 'none';
@@ -148,7 +149,7 @@
                     <td>${order.item_name || '---'}</td>
                     <td class="amount">$${order.final_amount || '0'}</td>
                     <td><span class="status-badge status-info">${order.payment_method || '---'}</span></td>
-                    <td><span class="status-badge ${statusClass}">${order.realname_status || '待處理'}</span></td>
+                    <td>${order.extra_gifts || '---'}</td> <td><span class="status-badge ${statusClass}">${order.realname_status || '待處理'}</span></td>
                     <td>${lockStatusHtml}</td>
                     <td>${actionBtnHtml}</td>
                 `;
