@@ -149,7 +149,8 @@
                     <td>${order.item_name || '---'}</td>
                     <td class="amount">$${order.final_amount || '0'}</td>
                     <td><span class="status-badge status-info">${order.payment_method || '---'}</span></td>
-                    <td>${order.extra_gifts || '---'}</td> <td><span class="status-badge ${statusClass}">${order.realname_status || '待處理'}</span></td>
+                    <td>${order.extra_gifts ? `${order.extra_gifts} *60回聲` : '---'}</td>
+                    <td><span class="status-badge ${statusClass}">${order.realname_status || '待處理'}</span></td>
                     <td>${lockStatusHtml}</td>
                     <td>${actionBtnHtml}</td>
                 `;
