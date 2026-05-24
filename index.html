@@ -3,24 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>代充訂單即時對帳監控（完全體對帳版）</title>
+    <title>代充訂單即時對帳監控（業務實時鎖定版）</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; background: #f5f5f7; }
-        .container { max-width: 1400px; margin: 0 auto; }
-        h2 { color: #333; display: flex; align-items: center; gap: 10px; }
-        .btn-refresh { padding: 10px 20px; background: #0071e3; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; margin-bottom: 20px; transition: background 0.2s; }
-        .btn-refresh:hover { background: #0077ed; }
+        .container { max-width: 1500px; margin: 0 auto; }
+        .header-zone { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        h2 { color: #333; margin: 0; display: flex; align-items: center; gap: 10px; }
+        
+        /* 業務身分選擇器 */
+        .user-zone { display: flex; align-items: center; gap: 10px; background: white; padding: 10px 15px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .user-select { padding: 6px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 14px; font-weight: 500; }
+
         table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
         th, td { padding: 12px 14px; text-align: left; border-bottom: 1px solid #eee; font-size: 14px; }
         th { background-color: #f9f9fb; color: #666; font-weight: 600; }
-        tr:last-child td { border-bottom: none; }
         tr:hover { background-color: #fafafa; }
+        
+        /* 被別人鎖定的行變灰、禁止點擊 */
+        tr.locked-by-other { background-color: #f9f9f9; opacity: 0.7; }
+        /* 自己鎖定的行亮底 */
+        tr.locked-by-me { background-color: #f0f7ff; }
+
         .status-badge { padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; display: inline-block; }
         .status-success { background: #e3fbe3; color: #1e7e34; }
         .status-warning { background: #fff3cd; color: #856404; }
         .status-info { background: #e8f4fd; color: #0071e3; }
+        .status-locked { background: #e2e3e5; color: #383d41; }
         .amount { font-weight: 600; color: #d9383a; }
+        
+        /* 搶單按鈕樣式 */
+        .btn-lock { padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; transition: 0.2s; }
+        .btn-lock:hover { background: #218838; }
+        .btn-unlock { padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; transition: 0.2s; }
+        .btn-unlock:hover { background: #c82333; }
+
         #loading { color: #666; font-style: italic; margin-bottom: 15px; }
         code { background: #f4f4f4; padding: 2px 6px; border-radius: 4px; font-family: monospace; }
     </style>
@@ -28,8 +45,18 @@
 <body>
 
     <div class="container">
-        <h2>📋 代充訂單即時對帳單 (財務唯讀面板)</h2>
-        <button class="btn-refresh" onclick="fetchOrders()">🔄 重新整理財務資料</button>
+        <div class="header-zone">
+            <h2>📋 代充訂單即時對帳單 (實時動態鎖定版)</h2>
+            
+            <div class="user-zone">
+                <label for="operator-select">👤 當前操作業務：</label>
+                <select id="operator-select" class="user-select" onchange="fetchOrders()">
+                    <option value="業務A">業務 A</option>
+                    <option value="業務B">業務 B</option>
+                </select>
+            </div>
+        </div>
+        
         <div id="loading">最新對帳資料載入中...</div>
 
         <table id="orders-table" style="display: none;">
@@ -42,8 +69,9 @@
                     <th>購買品項</th>
                     <th>實付金額</th>
                     <th>付款方式</th>
-                    <th>備註 / 贈品</th>
                     <th>實名狀態</th>
+                    <th>鎖定狀態</th>
+                    <th>動作</th>
                 </tr>
             </thead>
             <tbody id="orders-body">
@@ -55,33 +83,41 @@
         const SUPABASE_URL = 'https://sizlxeoconbuxkyrtnqd.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpemx4ZW9jb25idXhreXJ0bnFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3NTg4OTgsImV4cCI6MjA5NDMzNDg5OH0.Lu6f3HgJ_wsM-pLhK0j3tNbK7hu_1E19rj63iVn0qqI';
 
-        // 初始化 Supabase 
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        async function fetchOrders() {
-            document.getElementById('loading').style.display = 'block';
-            document.getElementById('orders-table').style.display = 'none';
+        // 獲取當前網頁選擇的業務是誰
+        function getCurrentOperator() {
+            return document.getElementById('operator-select').value;
+        }
 
-            // 🎯 【修改點一】：SQL 語句補齊你 orders 表裡的所有財務對帳欄位
+        async function fetchOrders() {
+            const currentOp = getCurrentOperator();
+            const isFirstLoad = document.getElementById('orders-body').children.length === 0;
+            if (isFirstLoad) {
+                document.getElementById('loading').style.display = 'block';
+                document.getElementById('orders-table').style.display = 'none';
+            }
+
+            // 🎯 撈取所有必要的欄位，包含鎖定資訊
             const { data, error } = await supabaseClient
                 .from('orders')
-                .select('order_no, uid, nickname, server_str, realname_status, item_name, final_amount, payment_method, extra_gifts')
+                .select('id, order_no, uid, nickname, server_str, realname_status, item_name, final_amount, payment_method, is_locked, operator')
                 .order('id', { ascending: false });
 
             document.getElementById('loading').style.display = 'none';
 
             if (error) {
-                alert('對帳單撈取失敗，請檢查金鑰或網路：' + error.message);
+                console.error('對帳單撈取失敗：', error.message);
                 return;
             }
 
             const tbody = document.getElementById('orders-body');
             tbody.innerHTML = ''; 
 
-            // 渲染完整財務資料列
             data.forEach(order => {
                 const tr = document.createElement('tr');
                 
+                // 實名狀態樣式
                 let statusClass = 'status-info';
                 if (order.realname_status === '已實名') {
                     statusClass = 'status-success';
@@ -89,7 +125,22 @@
                     statusClass = 'status-warning';
                 }
 
-                // 🎯 【修改點二】：動態將所有新增欄位塞進對應的表格 td 中
+                // 🎯 處理鎖定邏輯的 UI 變化
+                let lockStatusHtml = '<span class="status-badge status-info">待處理 ☕</span>';
+                let actionBtnHtml = `<button class="btn-lock" onclick="toggleLock(${order.id}, true)">🔒 我來處理</button>`;
+                
+                if (order.is_locked) {
+                    if (order.operator === currentOp) {
+                        tr.className = 'locked-by-me';
+                        lockStatusHtml = `<span class="status-badge status-warning">你自己處理中 ⚡</span>`;
+                        actionBtnHtml = `<button class="btn-unlock" onclick="toggleLock(${order.id}, false)">🔓 釋放訂單</button>`;
+                    } else {
+                        tr.className = 'locked-by-other';
+                        lockStatusHtml = `<span class="status-badge status-locked">❌ ${order.operator} 處理中</span>`;
+                        actionBtnHtml = `<button class="btn-lock" disabled style="background:#ccc; cursor:not-allowed;">已被鎖定</button>`;
+                    }
+                }
+
                 tr.innerHTML = `
                     <td><strong>${order.order_no || '---'}</strong></td>
                     <td><code>${order.uid || '---'}</code></td>
@@ -98,8 +149,9 @@
                     <td>${order.item_name || '---'}</td>
                     <td class="amount">$${order.final_amount || '0'}</td>
                     <td><span class="status-badge status-info">${order.payment_method || '---'}</span></td>
-                    <td><small>${order.extra_gifts || '無'}</small></td>
                     <td><span class="status-badge ${statusClass}">${order.realname_status || '待處理'}</span></td>
+                    <td>${lockStatusHtml}</td>
+                    <td>${actionBtnHtml}</td>
                 `;
                 tbody.appendChild(tr);
             });
@@ -107,7 +159,39 @@
             document.getElementById('orders-table').style.display = 'table';
         }
 
-        // 網頁開啟自動同步
+        // 🎯 點擊按鈕時，直接去修改 Supabase 資料庫該筆訂單的鎖定狀態
+        async function toggleLock(orderId, shouldLock) {
+            const currentOp = getCurrentOperator();
+            
+            const updateData = shouldLock 
+                ? { is_locked: true, operator: currentOp } 
+                : { is_locked: false, operator: null };
+
+            const { error } = await supabaseClient
+                .from('orders')
+                .update(updateData)
+                .eq('id', orderId);
+
+            if (error) {
+                alert('操作失敗，請確認資料庫權限(RLS)：' + error.message);
+            }
+        }
+
+        // 🚀 啟動 Supabase Realtime 監聽串流
+        const ordersListener = supabaseClient
+            .channel('public-orders-changes')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'orders' },
+                (payload) => {
+                    // 無論是新單進來、地端小鷹補票成功，還是另一個業務按下「我來處理」
+                    // 這裡都會秒速觸發，網頁當場刷新！
+                    fetchOrders(); 
+                }
+            )
+            .subscribe();
+
+        // 網頁開啟時第一次載入
         fetchOrders();
     </script>
 </body>
