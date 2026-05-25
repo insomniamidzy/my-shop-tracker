@@ -99,4 +99,181 @@
 
     <script>
         const SUPABASE_URL = 'https://sizlxeoconbuxkyrtnqd.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpemx4ZW9jb25idXhreXJ0bnFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3NTg4OTgsImV4cCI6MjA5NDMzNDg5OH0.Lu6f3HgJ_wsM-pLhK0j3tNbK7hu
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpemx4ZW9jb25idXhreXJ0bnFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3NTg4OTgsImV4cCI6MjA5NDMzNDg5OH0.Lu6f3HgJ_wsM-pLhK0j3tNbK7hu_1E19rj63iVn0qqI';
+
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // ✨ 新增全域變數：負責記住從資料庫撈回來的所有資料
+        let allOrdersData = [];
+
+        function getCurrentOperator() {
+            return document.getElementById('operator-select').value;
+        }
+
+        // 🎯 職責拆分：這個函數現在「只負責」跟 Supabase 要資料
+        async function fetchOrders() {
+            const isFirstLoad = document.getElementById('orders-body').children.length === 0;
+            if (isFirstLoad) {
+                document.getElementById('loading').style.display = 'block';
+                document.getElementById('orders-table').style.display = 'none';
+            }
+
+            const { data, error } = await supabaseClient
+                .from('orders')
+                .select('id, order_no, uid, nickname, server_str, realname_status, item_name, final_amount, payment_method, extra_gifts, is_locked, operator, status, line_name')
+                .order('id', { ascending: false });
+
+            document.getElementById('loading').style.display = 'none';
+
+            if (error) {
+                console.error('對帳單撈取失敗：', error.message);
+                return;
+            }
+
+            allOrdersData = data; // 把熱騰騰的資料存起來
+            renderOrders();       // 呼叫渲染引擎去畫布上印出來
+        }
+
+        // ✨ 這是全新加入的渲染與過濾引擎
+        function renderOrders() {
+            const currentOp = getCurrentOperator();
+            const statusFilter = document.getElementById('status-filter').value;
+            const searchTerm = document.getElementById('search-input').value.toLowerCase();
+            
+            const tbody = document.getElementById('orders-body');
+            tbody.innerHTML = ''; 
+
+            // 🚀 核心邏輯：在記憶體中瞬間過濾資料
+            const filteredData = allOrdersData.filter(order => {
+                const currentStatus = order.status || 'pending';
+                
+                // 1. 檢查下拉選單狀態 (如果是 all 就放行)
+                const matchStatus = (statusFilter === 'all') || (currentStatus === statusFilter);
+                
+                // 2. 檢查關鍵字 (把幾個重要欄位組合成一包字串來搜，包含 UID)
+                const searchString = `${order.order_no} ${order.uid} ${order.nickname} ${order.line_name}`.toLowerCase();
+                const matchSearch = searchString.includes(searchTerm);
+
+                return matchStatus && matchSearch;
+            });
+
+            // 開始把過濾後的資料印成 HTML
+            filteredData.forEach(order => {
+                const tr = document.createElement('tr');
+                
+                let statusClass = 'status-info';
+                if (order.realname_status === '已實名') {
+                    statusClass = 'status-success';
+                } else if (order.realname_status === '未實名/需驗證' || order.realname_status === 'NEED_MANUAL_CHECK') {
+                    statusClass = 'status-warning';
+                }
+
+                let lockStatusHtml = '<span class="status-badge status-info">待處理 ☕</span>';
+                let actionBtnHtml = `<button class="btn-lock" onclick="toggleLock(${order.id}, true)">🔒 我來處理</button>`;
+                let isSelectDisabled = false; 
+                
+                if (order.is_locked) {
+                    if (order.operator === currentOp) {
+                        tr.className = 'locked-by-me';
+                        lockStatusHtml = `<span class="status-badge status-warning">你自己處理中 ⚡</span>`;
+                        actionBtnHtml = `<button class="btn-unlock" onclick="toggleLock(${order.id}, false)">🔓 釋放訂單</button>`;
+                    } else {
+                        tr.className = 'locked-by-other';
+                        lockStatusHtml = `<span class="status-badge status-locked">❌ ${order.operator} 處理中</span>`;
+                        actionBtnHtml = `<button class="btn-lock" disabled style="background:#ccc; cursor:not-allowed;">已被鎖定</button>`;
+                        isSelectDisabled = true; 
+                    }
+                }
+
+                const currentStatus = order.status || 'pending';
+                const statusDropdownHtml = `
+                    <select class="status-dropdown" data-id="${order.id}" onchange="updateOrderStatus(this)" ${isSelectDisabled ? 'disabled' : ''}>
+                        <option value="pending" ${currentStatus === 'pending' ? 'selected' : ''}>🟡 未付款</option>
+                        <option value="paid" ${currentStatus === 'paid' ? 'selected' : ''}>🟢 已付款</option>
+                        <option value="cancelled" ${currentStatus === 'cancelled' ? 'selected' : ''}>🔴 已取消</option>
+                    </select>
+                `;
+
+                const playerNameHtml = `
+                    <div class="player-info">
+                        <strong>🎮 ${order.nickname || '---'}</strong>
+                        <span class="line-name">💬 ${order.line_name || '未綁定 LINE'}</span>
+                    </div>
+                `;
+
+                tr.innerHTML = `
+                    <td><strong>${order.order_no || '---'}</strong></td>
+                    <td><code>${order.uid || '---'}</code></td>
+                    <td>${playerNameHtml}</td> 
+                    <td>${order.item_name || '---'}</td>
+                    <td class="amount">$${order.final_amount || '0'}</td>
+                    <td><span class="status-badge status-info">${order.payment_method || '---'}</span></td>
+                    <td><span class="status-badge ${statusClass}">${order.realname_status || '待處理'}</span></td>
+                    <td>${statusDropdownHtml}</td> 
+                    <td>${lockStatusHtml}</td>
+                    <td>${actionBtnHtml}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('orders-table').style.display = 'table';
+        }
+
+        async function toggleLock(orderId, shouldLock) {
+            const currentOp = getCurrentOperator();
+            
+            const updateData = shouldLock 
+                ? { is_locked: true, operator: currentOp } 
+                : { is_locked: false, operator: null };
+
+            const { error } = await supabaseClient
+                .from('orders')
+                .update(updateData)
+                .eq('id', orderId);
+
+            if (error) {
+                alert('操作失敗：' + error.message);
+            } else {
+                fetchOrders(); // 成功後向資料庫要最新狀態
+            }
+        }
+
+        async function updateOrderStatus(selectElement) {
+            const orderId = selectElement.getAttribute('data-id');
+            const newStatus = selectElement.value;
+            const statusText = selectElement.options[selectElement.selectedIndex].text;
+
+            if (!confirm(`確定要將這筆訂單改為「${statusText}」嗎？`)) {
+                renderOrders(); // 取消的話，只要重繪畫面就能讓選單變回原樣
+                return;
+            }
+
+            const { error } = await supabaseClient
+                .from('orders')
+                .update({ status: newStatus })
+                .eq('id', orderId);
+
+            if (error) {
+                alert('狀態更新失敗，請檢查網路：' + error.message);
+            } 
+            
+            fetchOrders(); // 更新成功，向資料庫要最新狀態
+        }
+
+        // 🚀 保持 Realtime 監聽
+        const ordersListener = supabaseClient
+            .channel('public-orders-changes')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'orders' },
+                (payload) => {
+                    fetchOrders(); 
+                }
+            )
+            .subscribe();
+
+        // 第一次開啟網頁時載入資料
+        fetchOrders();
+    </script>
+</body>
+</html>
