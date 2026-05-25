@@ -183,6 +183,9 @@
                 ? { is_locked: true, operator: currentOp } 
                 : { is_locked: false, operator: null };
 
+            // ✨ UX 優化：可以在這裡先把按鈕變成「處理中...」防止連點 (選用)
+            // 你現在的做法已經很快了，所以我們直接呼叫更新即可
+
             const { error } = await supabaseClient
                 .from('orders')
                 .update(updateData)
@@ -190,6 +193,9 @@
 
             if (error) {
                 alert('操作失敗：' + error.message);
+            } else {
+                // ✨ 關鍵新增：成功寫入後，立刻手動刷新畫面，給予最即時的視覺回饋！
+                fetchOrders();
             }
         }
 
@@ -210,8 +216,10 @@
 
             if (error) {
                 alert('狀態更新失敗，請檢查網路：' + error.message);
-                fetchOrders(); 
-            }
+            } 
+            
+            // ✨ 關鍵修改：無論成功或失敗，都強制刷新一次畫面，確保業務看到的絕對是最新的資料！
+            fetchOrders(); 
         }
 
         const ordersListener = supabaseClient
