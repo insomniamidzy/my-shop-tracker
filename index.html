@@ -286,13 +286,9 @@
             saveBtn.innerText = '儲存中...';
             saveBtn.disabled = true;
 
+            // 🚀 (全新的 RPC 投幣箱寫法)
             const { error } = await supabaseClient
-                .from('system_config')
-                .upsert({ 
-                    config_key: 'meow_token', 
-                    config_value: newToken,
-                    updated_at: new Date().toISOString() 
-                });
+                .rpc('update_meow_token_securely', { new_token: newToken });
 
             saveBtn.innerText = '💾 儲存並更新';
             saveBtn.disabled = false;
