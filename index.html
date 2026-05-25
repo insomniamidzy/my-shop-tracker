@@ -3,16 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>代充訂單即時對帳監控（包含狀態切換與LINE綁定版）</title>
+    <title>代充訂單即時對帳監控（包含狀態切換、LINE綁定與進階篩選版）</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; background: #f5f5f7; }
         .container { max-width: 1600px; margin: 0 auto; }
-        .header-zone { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .header-zone { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
         h2 { color: #333; margin: 0; display: flex; align-items: center; gap: 10px; }
         
         .user-zone { display: flex; align-items: center; gap: 10px; background: white; padding: 10px 15px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
         .user-select { padding: 6px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 14px; font-weight: 500; }
+
+        /* ✨ 新增篩選區塊的樣式 */
+        .tools-zone { display: flex; gap: 15px; align-items: center; background: white; padding: 10px 15px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .search-input { padding: 6px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 14px; width: 250px; outline: none; transition: 0.2s; }
+        .search-input:focus { border-color: #0071e3; box-shadow: 0 0 0 2px rgba(0,113,227,0.2); }
 
         table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
         th, td { padding: 12px 14px; text-align: left; border-bottom: 1px solid #eee; font-size: 14px; }
@@ -40,7 +45,6 @@
         #loading { color: #666; font-style: italic; margin-bottom: 15px; }
         code { background: #f4f4f4; padding: 2px 6px; border-radius: 4px; font-family: monospace; }
         
-        /* ✨ 讓 LINE 暱稱看起來更精緻的小樣式 */
         .player-info { display: flex; flex-direction: column; gap: 4px; }
         .line-name { font-size: 12px; color: #888; background: #f0f0f0; padding: 2px 6px; border-radius: 4px; display: inline-block; width: fit-content; }
     </style>
@@ -49,11 +53,22 @@
 
     <div class="container">
         <div class="header-zone">
-            <h2>📋 代充訂單即時對帳單 (實時動態鎖定 + 狀態控管)</h2>
+            <h2>📋 代充訂單即時對帳單</h2>
+            
+            <div class="tools-zone">
+                <input type="text" id="search-input" class="search-input" placeholder="🔍 搜尋訂單號 / UID / 遊戲暱稱 / LINE..." oninput="renderOrders()">
+                
+                <select id="status-filter" class="user-select" onchange="renderOrders()">
+                    <option value="all">👁️ 全部狀態</option>
+                    <option value="pending">🟡 只看未付款</option>
+                    <option value="paid">🟢 只看已付款</option>
+                    <option value="cancelled">🔴 只看已取消</option>
+                </select>
+            </div>
             
             <div class="user-zone">
                 <label for="operator-select">👤 當前操作業務：</label>
-                <select id="operator-select" class="user-select" onchange="fetchOrders()">
+                <select id="operator-select" class="user-select" onchange="renderOrders()">
                     <option value="葉子">葉子</option>
                     <option value="牧宣">牧宣</option>
                 </select>
@@ -67,7 +82,8 @@
                 <tr>
                     <th>訂單編號</th>
                     <th>UID</th>
-                    <th>玩家 / LINE 暱稱</th> <th>購買品項</th>
+                    <th>玩家 / LINE 暱稱</th>
+                    <th>購買品項</th>
                     <th>實付金額</th>
                     <th>付款方式</th>
                     <th>實名狀態</th>
@@ -83,157 +99,4 @@
 
     <script>
         const SUPABASE_URL = 'https://sizlxeoconbuxkyrtnqd.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpemx4ZW9jb25idXhreXJ0bnFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3NTg4OTgsImV4cCI6MjA5NDMzNDg5OH0.Lu6f3HgJ_wsM-pLhK0j3tNbK7hu_1E19rj63iVn0qqI';
-
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-        function getCurrentOperator() {
-            return document.getElementById('operator-select').value;
-        }
-
-        async function fetchOrders() {
-            const currentOp = getCurrentOperator();
-            const isFirstLoad = document.getElementById('orders-body').children.length === 0;
-            if (isFirstLoad) {
-                document.getElementById('loading').style.display = 'block';
-                document.getElementById('orders-table').style.display = 'none';
-            }
-
-            // 🎯 ✨ 新增：在 select 裡面補上 line_name，讓資料庫把 LINE 暱稱吐出來
-            const { data, error } = await supabaseClient
-                .from('orders')
-                .select('id, order_no, uid, nickname, server_str, realname_status, item_name, final_amount, payment_method, extra_gifts, is_locked, operator, status, line_name')
-                .order('id', { ascending: false });
-
-            document.getElementById('loading').style.display = 'none';
-
-            if (error) {
-                console.error('對帳單撈取失敗：', error.message);
-                return;
-            }
-
-            const tbody = document.getElementById('orders-body');
-            tbody.innerHTML = ''; 
-
-            data.forEach(order => {
-                const tr = document.createElement('tr');
-                
-                let statusClass = 'status-info';
-                if (order.realname_status === '已實名') {
-                    statusClass = 'status-success';
-                } else if (order.realname_status === '未實名/需驗證' || order.realname_status === 'NEED_MANUAL_CHECK') {
-                    statusClass = 'status-warning';
-                }
-
-                let lockStatusHtml = '<span class="status-badge status-info">待處理 ☕</span>';
-                let actionBtnHtml = `<button class="btn-lock" onclick="toggleLock(${order.id}, true)">🔒 我來處理</button>`;
-                let isSelectDisabled = false; 
-                
-                if (order.is_locked) {
-                    if (order.operator === currentOp) {
-                        tr.className = 'locked-by-me';
-                        lockStatusHtml = `<span class="status-badge status-warning">你自己處理中 ⚡</span>`;
-                        actionBtnHtml = `<button class="btn-unlock" onclick="toggleLock(${order.id}, false)">🔓 釋放訂單</button>`;
-                    } else {
-                        tr.className = 'locked-by-other';
-                        lockStatusHtml = `<span class="status-badge status-locked">❌ ${order.operator} 處理中</span>`;
-                        actionBtnHtml = `<button class="btn-lock" disabled style="background:#ccc; cursor:not-allowed;">已被鎖定</button>`;
-                        isSelectDisabled = true; 
-                    }
-                }
-
-                const currentStatus = order.status || 'pending';
-                const statusDropdownHtml = `
-                    <select class="status-dropdown" data-id="${order.id}" onchange="updateOrderStatus(this)" ${isSelectDisabled ? 'disabled' : ''}>
-                        <option value="pending" ${currentStatus === 'pending' ? 'selected' : ''}>🟡 未付款</option>
-                        <option value="paid" ${currentStatus === 'paid' ? 'selected' : ''}>🟢 已付款</option>
-                        <option value="cancelled" ${currentStatus === 'cancelled' ? 'selected' : ''}>🔴 已取消</option>
-                    </select>
-                `;
-
-                // ✨ 新增：把遊戲暱稱和 LINE 暱稱組合在一起
-                const playerNameHtml = `
-                    <div class="player-info">
-                        <strong>🎮 ${order.nickname || '---'}</strong>
-                        <span class="line-name">💬 ${order.line_name || '未綁定 LINE'}</span>
-                    </div>
-                `;
-
-                tr.innerHTML = `
-                    <td><strong>${order.order_no || '---'}</strong></td>
-                    <td><code>${order.uid || '---'}</code></td>
-                    <td>${playerNameHtml}</td> <td>${order.item_name || '---'}</td>
-                    <td class="amount">$${order.final_amount || '0'}</td>
-                    <td><span class="status-badge status-info">${order.payment_method || '---'}</span></td>
-                    <td><span class="status-badge ${statusClass}">${order.realname_status || '待處理'}</span></td>
-                    <td>${statusDropdownHtml}</td> 
-                    <td>${lockStatusHtml}</td>
-                    <td>${actionBtnHtml}</td>
-                `;
-                tbody.appendChild(tr);
-            });
-
-            document.getElementById('orders-table').style.display = 'table';
-        }
-
-        async function toggleLock(orderId, shouldLock) {
-            const currentOp = getCurrentOperator();
-            
-            const updateData = shouldLock 
-                ? { is_locked: true, operator: currentOp } 
-                : { is_locked: false, operator: null };
-
-            // ✨ UX 優化：可以在這裡先把按鈕變成「處理中...」防止連點 (選用)
-            // 你現在的做法已經很快了，所以我們直接呼叫更新即可
-
-            const { error } = await supabaseClient
-                .from('orders')
-                .update(updateData)
-                .eq('id', orderId);
-
-            if (error) {
-                alert('操作失敗：' + error.message);
-            } else {
-                // ✨ 關鍵新增：成功寫入後，立刻手動刷新畫面，給予最即時的視覺回饋！
-                fetchOrders();
-            }
-        }
-
-        async function updateOrderStatus(selectElement) {
-            const orderId = selectElement.getAttribute('data-id');
-            const newStatus = selectElement.value;
-            const statusText = selectElement.options[selectElement.selectedIndex].text;
-
-            if (!confirm(`確定要將這筆訂單改為「${statusText}」嗎？`)) {
-                fetchOrders();
-                return;
-            }
-
-            const { error } = await supabaseClient
-                .from('orders')
-                .update({ status: newStatus })
-                .eq('id', orderId);
-
-            if (error) {
-                alert('狀態更新失敗，請檢查網路：' + error.message);
-            } 
-            
-            // ✨ 關鍵修改：無論成功或失敗，都強制刷新一次畫面，確保業務看到的絕對是最新的資料！
-            fetchOrders(); 
-        }
-
-        const ordersListener = supabaseClient
-            .channel('public-orders-changes')
-            .on(
-                'postgres_changes',
-                { event: '*', schema: 'public', table: 'orders' },
-                (payload) => {
-                    fetchOrders(); 
-                }
-            )
-            .subscribe();
-
-        fetchOrders();
-    </script>
-</body>
-</html>
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpemx4ZW9jb25idXhreXJ0bnFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3NTg4OTgsImV4cCI6MjA5NDMzNDg5OH0.Lu6f3HgJ_wsM-pLhK0j3tNbK7hu
