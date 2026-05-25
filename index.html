@@ -14,7 +14,6 @@
         .user-zone { display: flex; align-items: center; gap: 10px; background: white; padding: 10px 15px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
         .user-select { padding: 6px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 14px; font-weight: 500; }
 
-        /* ✨ 新增篩選區塊的樣式 */
         .tools-zone { display: flex; gap: 15px; align-items: center; background: white; padding: 10px 15px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
         .search-input { padding: 6px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 14px; width: 250px; outline: none; transition: 0.2s; }
         .search-input:focus { border-color: #0071e3; box-shadow: 0 0 0 2px rgba(0,113,227,0.2); }
@@ -64,6 +63,7 @@
                     <option value="paid">🟢 只看已付款</option>
                     <option value="cancelled">🔴 只看已取消</option>
                 </select>
+                <button onclick="openConfigModal()" class="btn-lock" style="background: #6c757d; margin-left: auto;">⚙️ 設定</button>
             </div>
             
             <div class="user-zone">
@@ -97,20 +97,30 @@
         </table>
     </div>
 
+    <div id="config-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 1000; padding: 20px; box-sizing: border-box;">
+        <div style="background: white; padding: 24px; border-radius: 12px; width: 100%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
+            <h3 style="margin-top: 0; color: #333;">⚙️ 系統核心設定</h3>
+            <label style="font-size: 14px; color: #666; font-weight: 600;">更新喵喵驗證 Token：</label>
+            <input type="text" id="new-token-input" placeholder="請貼上手機 Proxyman 抓到的全新 Token" style="width: 100%; padding: 10px; margin: 10px 0 20px 0; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; box-sizing: border-box; outline: none;">
+            <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                <button onclick="closeConfigModal()" style="padding: 8px 16px; background: #eee; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; color: #555;">取消</button>
+                <button onclick="saveToken()" style="padding: 8px 16px; background: #0071e3; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">💾 儲存並更新</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const SUPABASE_URL = 'https://sizlxeoconbuxkyrtnqd.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpemx4ZW9jb25idXhreXJ0bnFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3NTg4OTgsImV4cCI6MjA5NDMzNDg5OH0.Lu6f3HgJ_wsM-pLhK0j3tNbK7hu_1E19rj63iVn0qqI';
 
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // ✨ 新增全域變數：負責記住從資料庫撈回來的所有資料
         let allOrdersData = [];
 
         function getCurrentOperator() {
             return document.getElementById('operator-select').value;
         }
 
-        // 🎯 職責拆分：這個函數現在「只負責」跟 Supabase 要資料
         async function fetchOrders() {
             const isFirstLoad = document.getElementById('orders-body').children.length === 0;
             if (isFirstLoad) {
@@ -130,11 +140,10 @@
                 return;
             }
 
-            allOrdersData = data; // 把熱騰騰的資料存起來
-            renderOrders();       // 呼叫渲染引擎去畫布上印出來
+            allOrdersData = data; 
+            renderOrders();       
         }
 
-        // ✨ 這是全新加入的渲染與過濾引擎
         function renderOrders() {
             const currentOp = getCurrentOperator();
             const statusFilter = document.getElementById('status-filter').value;
@@ -143,21 +152,17 @@
             const tbody = document.getElementById('orders-body');
             tbody.innerHTML = ''; 
 
-            // 🚀 核心邏輯：在記憶體中瞬間過濾資料
             const filteredData = allOrdersData.filter(order => {
                 const currentStatus = order.status || 'pending';
                 
-                // 1. 檢查下拉選單狀態 (如果是 all 就放行)
                 const matchStatus = (statusFilter === 'all') || (currentStatus === statusFilter);
                 
-                // 2. 檢查關鍵字 (把幾個重要欄位組合成一包字串來搜，包含 UID)
                 const searchString = `${order.order_no} ${order.uid} ${order.nickname} ${order.line_name}`.toLowerCase();
                 const matchSearch = searchString.includes(searchTerm);
 
                 return matchStatus && matchSearch;
             });
 
-            // 開始把過濾後的資料印成 HTML
             filteredData.forEach(order => {
                 const tr = document.createElement('tr');
                 
@@ -234,7 +239,7 @@
             if (error) {
                 alert('操作失敗：' + error.message);
             } else {
-                fetchOrders(); // 成功後向資料庫要最新狀態
+                fetchOrders();
             }
         }
 
@@ -244,7 +249,7 @@
             const statusText = selectElement.options[selectElement.selectedIndex].text;
 
             if (!confirm(`確定要將這筆訂單改為「${statusText}」嗎？`)) {
-                renderOrders(); // 取消的話，只要重繪畫面就能讓選單變回原樣
+                renderOrders(); 
                 return;
             }
 
@@ -257,10 +262,49 @@
                 alert('狀態更新失敗，請檢查網路：' + error.message);
             } 
             
-            fetchOrders(); // 更新成功，向資料庫要最新狀態
+            fetchOrders(); 
         }
 
-        // 🚀 保持 Realtime 監聽
+        // ✨ 新增：彈出視窗與寫入資料庫的控制邏輯
+        function openConfigModal() {
+            document.getElementById('config-modal').style.display = 'flex';
+            document.getElementById('new-token-input').value = '';
+        }
+
+        function closeConfigModal() {
+            document.getElementById('config-modal').style.display = 'none';
+        }
+
+        async function saveToken() {
+            const newToken = document.getElementById('new-token-input').value.trim();
+            if (!newToken) {
+                alert('⚠️ 請先輸入 Token！');
+                return;
+            }
+            
+            const saveBtn = event.target;
+            saveBtn.innerText = '儲存中...';
+            saveBtn.disabled = true;
+
+            const { error } = await supabaseClient
+                .from('system_config')
+                .upsert({ 
+                    config_key: 'meow_token', 
+                    config_value: newToken,
+                    updated_at: new Date().toISOString() 
+                });
+
+            saveBtn.innerText = '💾 儲存並更新';
+            saveBtn.disabled = false;
+
+            if (error) {
+                alert('❌ Token 更新失敗：' + error.message);
+            } else {
+                alert('✅ Token 已成功存入雲端資料庫！\n家裡的地端小鷹將在下一輪巡邏自動裝填新彈藥並重試。');
+                closeConfigModal();
+            }
+        }
+
         const ordersListener = supabaseClient
             .channel('public-orders-changes')
             .on(
@@ -272,7 +316,6 @@
             )
             .subscribe();
 
-        // 第一次開啟網頁時載入資料
         fetchOrders();
     </script>
 </body>
