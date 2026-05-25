@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>代充訂單即時對帳監控（包含狀態切換版）</title>
+    <title>代充訂單即時對帳監控（包含狀態切換與LINE綁定版）</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; background: #f5f5f7; }
@@ -34,12 +34,15 @@
         .btn-unlock { padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; transition: 0.2s; }
         .btn-unlock:hover { background: #c82333; }
 
-        /* ✨ 新增下拉選單的樣式 */
         .status-dropdown { padding: 4px 8px; border-radius: 6px; border: 1px solid #ccc; font-size: 13px; font-weight: 600; cursor: pointer; }
         .status-dropdown:disabled { cursor: not-allowed; background-color: #eee; }
 
         #loading { color: #666; font-style: italic; margin-bottom: 15px; }
         code { background: #f4f4f4; padding: 2px 6px; border-radius: 4px; font-family: monospace; }
+        
+        /* ✨ 讓 LINE 暱稱看起來更精緻的小樣式 */
+        .player-info { display: flex; flex-direction: column; gap: 4px; }
+        .line-name { font-size: 12px; color: #888; background: #f0f0f0; padding: 2px 6px; border-radius: 4px; display: inline-block; width: fit-content; }
     </style>
 </head>
 <body>
@@ -64,12 +67,12 @@
                 <tr>
                     <th>訂單編號</th>
                     <th>UID</th>
-                    <th>玩家暱稱</th>
-                    <th>購買品項</th>
+                    <th>玩家 / LINE 暱稱</th> <th>購買品項</th>
                     <th>實付金額</th>
                     <th>付款方式</th>
                     <th>實名狀態</th>
-                    <th>✨ 訂單狀態</th> <th>鎖定狀態</th>
+                    <th>訂單狀態</th>
+                    <th>鎖定狀態</th>
                     <th>動作</th>
                 </tr>
             </thead>
@@ -96,10 +99,10 @@
                 document.getElementById('orders-table').style.display = 'none';
             }
 
-            // 🎯 注意：這裡我在 select 裡面加上了 status 欄位
+            // 🎯 ✨ 新增：在 select 裡面補上 line_name，讓資料庫把 LINE 暱稱吐出來
             const { data, error } = await supabaseClient
                 .from('orders')
-                .select('id, order_no, uid, nickname, server_str, realname_status, item_name, final_amount, payment_method, extra_gifts, is_locked, operator, status')
+                .select('id, order_no, uid, nickname, server_str, realname_status, item_name, final_amount, payment_method, extra_gifts, is_locked, operator, status, line_name')
                 .order('id', { ascending: false });
 
             document.getElementById('loading').style.display = 'none';
@@ -124,7 +127,7 @@
 
                 let lockStatusHtml = '<span class="status-badge status-info">待處理 ☕</span>';
                 let actionBtnHtml = `<button class="btn-lock" onclick="toggleLock(${order.id}, true)">🔒 我來處理</button>`;
-                let isSelectDisabled = false; // ✨ 判斷是否要禁用下拉選單
+                let isSelectDisabled = false; 
                 
                 if (order.is_locked) {
                     if (order.operator === currentOp) {
@@ -135,11 +138,10 @@
                         tr.className = 'locked-by-other';
                         lockStatusHtml = `<span class="status-badge status-locked">❌ ${order.operator} 處理中</span>`;
                         actionBtnHtml = `<button class="btn-lock" disabled style="background:#ccc; cursor:not-allowed;">已被鎖定</button>`;
-                        isSelectDisabled = true; // 被別人鎖定，禁止操作狀態
+                        isSelectDisabled = true; 
                     }
                 }
 
-                // ✨ 這裡負責生成狀態下拉選單
                 const currentStatus = order.status || 'pending';
                 const statusDropdownHtml = `
                     <select class="status-dropdown" data-id="${order.id}" onchange="updateOrderStatus(this)" ${isSelectDisabled ? 'disabled' : ''}>
@@ -149,19 +151,23 @@
                     </select>
                 `;
 
+                // ✨ 新增：把遊戲暱稱和 LINE 暱稱組合在一起
+                const playerNameHtml = `
+                    <div class="player-info">
+                        <strong>🎮 ${order.nickname || '---'}</strong>
+                        <span class="line-name">💬 ${order.line_name || '未綁定 LINE'}</span>
+                    </div>
+                `;
+
                 tr.innerHTML = `
                     <td><strong>${order.order_no || '---'}</strong></td>
                     <td><code>${order.uid || '---'}</code></td>
-                    <td>${order.nickname || '---'}</td>
-                    <td>${order.item_name || '---'}</td>
+                    <td>${playerNameHtml}</td> <td>${order.item_name || '---'}</td>
                     <td class="amount">$${order.final_amount || '0'}</td>
-                    <td>
-                      <div>🎮 ${order.nickname || '---'}</div>
-                      <div style="font-size: 12px; color: #888;">💬 LINE: ${order.line_name || '未綁定'}</div>
-                    </td>
                     <td><span class="status-badge status-info">${order.payment_method || '---'}</span></td>
                     <td><span class="status-badge ${statusClass}">${order.realname_status || '待處理'}</span></td>
-                    <td>${statusDropdownHtml}</td> <td>${lockStatusHtml}</td>
+                    <td>${statusDropdownHtml}</td> 
+                    <td>${lockStatusHtml}</td>
                     <td>${actionBtnHtml}</td>
                 `;
                 tbody.appendChild(tr);
@@ -187,14 +193,12 @@
             }
         }
 
-        // ✨ 這是剛剛提到的新函數：負責處理狀態變更並寫回資料庫
         async function updateOrderStatus(selectElement) {
             const orderId = selectElement.getAttribute('data-id');
             const newStatus = selectElement.value;
             const statusText = selectElement.options[selectElement.selectedIndex].text;
 
             if (!confirm(`確定要將這筆訂單改為「${statusText}」嗎？`)) {
-                // 如果取消，呼叫 fetchOrders() 讓網頁重新跟資料庫同步，把選單變回原樣
                 fetchOrders();
                 return;
             }
@@ -206,12 +210,10 @@
 
             if (error) {
                 alert('狀態更新失敗，請檢查網路：' + error.message);
-                fetchOrders(); // 發生錯誤一樣重新讀取以防顯示錯誤狀態
+                fetchOrders(); 
             }
-            // 成功的話什麼都不用做，因為底下的 Realtime 監聽器會自動觸發畫面更新！
         }
 
-        // 🚀 保持 Realtime 監聽
         const ordersListener = supabaseClient
             .channel('public-orders-changes')
             .on(
