@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>代充訂單即時對帳監控（進階財務修改版）</title>
+    <title>代充訂單即時對帳監控（月結算與統計儀表板版）</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; background: #f5f5f7; }
@@ -32,22 +32,9 @@
         .status-info { background: #e8f4fd; color: #0071e3; }
         .status-locked { background: #e2e3e5; color: #383d41; }
         
-        /* ✨ 新增：無縫輸入框的樣式，平常看不出來是輸入框，滑鼠移過去或點擊才會有框線 */
-        .amount-input { 
-            width: 70px; 
-            padding: 4px 6px; 
-            border: 1px solid transparent; 
-            border-radius: 4px; 
-            font-size: 14px; 
-            font-weight: 700; 
-            color: #d9383a; 
-            background: transparent; 
-            transition: 0.2s; 
-            outline: none;
-        }
+        .amount-input { width: 70px; padding: 4px 6px; border: 1px solid transparent; border-radius: 4px; font-size: 14px; font-weight: 700; color: #d9383a; background: transparent; transition: 0.2s; outline: none; }
         .amount-input:hover { border-color: #ddd; background: #fff; }
         .amount-input:focus { border-color: #0071e3; background: #fff; box-shadow: 0 0 0 2px rgba(0,113,227,0.2); }
-        /* 隱藏數字輸入框上下調整的小箭頭 (Chrome/Safari) */
         .amount-input::-webkit-outer-spin-button, .amount-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         
         .btn-lock { padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; transition: 0.2s; }
@@ -60,12 +47,29 @@
 
         #loading { color: #666; font-style: italic; margin-bottom: 15px; }
         code { background: #f4f4f4; padding: 2px 6px; border-radius: 4px; font-family: monospace; }
-        
         .player-info { display: flex; flex-direction: column; gap: 4px; }
         .line-name { font-size: 12px; color: #888; background: #f0f0f0; padding: 2px 6px; border-radius: 4px; display: inline-block; width: fit-content; }
-        
         .time-text { font-size: 12px; color: #555; }
         .time-date { font-weight: 600; color: #333; }
+
+        /* ✨ 新增：浮動統計儀表板樣式 */
+        .dashboard {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 16px 20px;
+            border-radius: 12px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+            border: 1px solid #e1e4e8;
+            z-index: 999;
+            min-width: 220px;
+        }
+        .dash-title { margin: 0 0 12px 0; font-size: 14px; color: #333; font-weight: 800; border-bottom: 2px solid #eee; padding-bottom: 6px; display: flex; justify-content: space-between; align-items: baseline; }
+        .dash-item { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; color: #555; }
+        .dash-val { font-weight: 700; color: #0071e3; }
+        .dash-total { margin-top: 12px; padding-top: 10px; border-top: 1px dashed #ccc; font-size: 16px; font-weight: 800; color: #d9383a; display: flex; justify-content: space-between; }
     </style>
 </head>
 <body>
@@ -75,8 +79,10 @@
             <h2>📋 代充訂單即時對帳單</h2>
             
             <div class="tools-zone">
-                <input type="text" id="search-input" class="search-input" placeholder="🔍 搜尋訂單號 / UID / 遊戲暱稱 / LINE..." oninput="renderOrders()">
+                <input type="text" id="search-input" class="search-input" placeholder="🔍 搜尋訂單號 / UID / 遊戲暱稱..." oninput="renderOrders()">
                 
+                <input type="month" id="month-filter" class="user-select" title="選擇月份來結算" onchange="renderOrders()">
+
                 <select id="status-filter" class="user-select" onchange="renderOrders()">
                     <option value="all">👁️ 全部狀態</option>
                     <option value="pending">🟡 只看未付款</option>
@@ -105,7 +111,8 @@
                     <th>UID</th>
                     <th>玩家 / LINE 暱稱</th>
                     <th>購買品項</th>
-                    <th>實付金額</th> <th>付款方式</th>
+                    <th>實付金額</th>
+                    <th>付款方式</th>
                     <th>實名狀態</th>
                     <th>訂單狀態</th>
                     <th>完成時間</th>
@@ -116,6 +123,17 @@
             <tbody id="orders-body">
             </tbody>
         </table>
+    </div>
+
+    <div class="dashboard" id="stats-dashboard" style="display: none;">
+        <h4 class="dash-title">
+            <span>📊 畫面結算統計</span>
+            <span id="dash-month-label" style="font-size:12px; color:#888; font-weight:normal;"></span>
+        </h4>
+        <div class="dash-item"><span>759 點數：</span> <span class="dash-val" id="stat-759">0 單</span></div>
+        <div class="dash-item"><span>60 點數：</span> <span class="dash-val" id="stat-60">0 單</span></div>
+        <div class="dash-item"><span>✅ 已完成總量：</span> <span class="dash-val" id="stat-count" style="color: #1e7e34;">0 筆</span></div>
+        <div class="dash-total"><span>💰 總實收：</span> <span id="stat-amount">$0</span></div>
     </div>
 
     <div id="config-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 1000; padding: 20px; box-sizing: border-box;">
@@ -149,9 +167,10 @@
                 document.getElementById('orders-table').style.display = 'none';
             }
 
+            // ⚠️ 確保撈取資料時有把 created_at 也抓下來，這樣才能用日期過濾
             const { data, error } = await supabaseClient
                 .from('orders')
-                .select('id, order_no, uid, nickname, server_str, realname_status, item_name, final_amount, payment_method, extra_gifts, is_locked, operator, status, line_name, completed_at')
+                .select('id, order_no, uid, nickname, server_str, realname_status, item_name, final_amount, payment_method, extra_gifts, is_locked, operator, status, line_name, completed_at, created_at')
                 .order('id', { ascending: false });
 
             document.getElementById('loading').style.display = 'none';
@@ -169,21 +188,54 @@
             const currentOp = getCurrentOperator();
             const statusFilter = document.getElementById('status-filter').value;
             const searchTerm = document.getElementById('search-input').value.toLowerCase();
+            const monthFilter = document.getElementById('month-filter').value; // 抓取年月 (格式: YYYY-MM)
             
             const tbody = document.getElementById('orders-body');
             tbody.innerHTML = ''; 
 
+            // 初始化統計變數
+            let count759 = 0;
+            let count60 = 0;
+            let totalCompletedCount = 0;
+            let totalCompletedAmount = 0;
+
             const filteredData = allOrdersData.filter(order => {
+                // 1. 狀態篩選
                 const currentStatus = order.status || 'pending';
                 const matchStatus = (statusFilter === 'all') || (currentStatus === statusFilter);
+                
+                // 2. 關鍵字搜尋
                 const searchString = `${order.order_no} ${order.uid} ${order.nickname} ${order.line_name}`.toLowerCase();
                 const matchSearch = searchString.includes(searchTerm);
-                return matchStatus && matchSearch;
+
+                // 3. ✨ 月份篩選邏輯：如果訂單有完成時間就用完成時間，沒有就用建立時間來歸屬月份
+                let matchMonth = true;
+                if (monthFilter) {
+                    const dateToMatch = order.completed_at || order.created_at;
+                    if (dateToMatch) {
+                        // Supabase 的時間格式是 2026-05-28T... 所以用 startsWith 剛剛好！
+                        matchMonth = dateToMatch.startsWith(monthFilter);
+                    } else {
+                        matchMonth = false;
+                    }
+                }
+
+                return matchStatus && matchSearch && matchMonth;
             });
 
             filteredData.forEach(order => {
                 const tr = document.createElement('tr');
                 
+                // 📊 統計邏輯：只有「已完成」的訂單才會被算進右下角的業績裡
+                if (order.status === 'completed') {
+                    totalCompletedCount++;
+                    totalCompletedAmount += (parseInt(order.final_amount) || 0);
+                    
+                    const itemName = order.item_name || '';
+                    if (itemName.includes('759')) count759++;
+                    if (itemName.includes('60')) count60++;
+                }
+
                 let statusClass = 'status-info';
                 if (order.realname_status === '已實名') {
                     statusClass = 'status-success';
@@ -194,7 +246,7 @@
                 let lockStatusHtml = '<span class="status-badge status-info">待處理 ☕</span>';
                 let actionBtnHtml = `<button class="btn-lock" onclick="toggleLock(${order.id}, true)">🔒 我來處理</button>`;
                 let isSelectDisabled = false; 
-                let isAmountDisabled = false; // ✨ 如果被別人鎖定，金額也不能改
+                let isAmountDisabled = false; 
                 
                 if (order.is_locked) {
                     if (order.operator === currentOp) {
@@ -256,31 +308,31 @@
             });
 
             document.getElementById('orders-table').style.display = 'table';
+
+            // 🎯 更新右下角的統計儀表板
+            document.getElementById('stat-759').innerText = count759 + ' 單';
+            document.getElementById('stat-60').innerText = count60 + ' 單';
+            document.getElementById('stat-count').innerText = totalCompletedCount + ' 筆';
+            document.getElementById('stat-amount').innerText = '$' + totalCompletedAmount.toLocaleString();
+            document.getElementById('dash-month-label').innerText = monthFilter ? `(${monthFilter.replace('-', '年')}月)` : '(全部時間)';
+            document.getElementById('stats-dashboard').style.display = 'block';
         }
 
-        // ✨ 核心邏輯新增：更新實付金額
         async function updateFinalAmount(inputElement) {
             const orderId = inputElement.getAttribute('data-id');
-            const newAmount = parseInt(inputElement.value) || 0; // 確保是數字
-
-            // 儲存中給一點視覺回饋 (變半透明)
+            const newAmount = parseInt(inputElement.value) || 0; 
             inputElement.style.opacity = '0.5';
 
-            const { error } = await supabaseClient
-                .from('orders')
-                .update({ final_amount: newAmount })
-                .eq('id', orderId);
+            const { error } = await supabaseClient.from('orders').update({ final_amount: newAmount }).eq('id', orderId);
 
             if (error) {
                 alert('金額更新失敗，請檢查權限或網路：' + error.message);
-                fetchOrders(); // 失敗的話，向資料庫要回原本正確的數字
+                fetchOrders(); 
             } else {
-                // 成功的話，讓輸入框閃一下綠色提示業務
                 inputElement.style.opacity = '1';
                 inputElement.style.backgroundColor = '#e3fbe3';
-                setTimeout(() => {
-                    inputElement.style.backgroundColor = 'transparent';
-                }, 1000);
+                setTimeout(() => { inputElement.style.backgroundColor = 'transparent'; }, 1000);
+                fetchOrders(); // 更新成功後，重新抓取資料來刷新右下角的總金額！
             }
         }
 
@@ -296,9 +348,7 @@
             const newStatus = selectElement.value;
             const statusText = selectElement.options[selectElement.selectedIndex].text;
 
-            if (!confirm(`確定要將這筆訂單改為「${statusText}」嗎？`)) {
-                renderOrders(); return;
-            }
+            if (!confirm(`確定要將這筆訂單改為「${statusText}」嗎？`)) { renderOrders(); return; }
 
             const updatePayload = { status: newStatus };
             if (newStatus === 'completed') updatePayload.completed_at = new Date().toISOString();
