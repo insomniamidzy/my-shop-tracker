@@ -46,6 +46,10 @@
         
         .player-info { display: flex; flex-direction: column; gap: 4px; }
         .line-name { font-size: 12px; color: #888; background: #f0f0f0; padding: 2px 6px; border-radius: 4px; display: inline-block; width: fit-content; }
+        
+        /* ✨ 新增完成時間的樣式 */
+        .time-text { font-size: 12px; color: #555; }
+        .time-date { font-weight: 600; color: #333; }
     </style>
 </head>
 <body>
@@ -89,7 +93,7 @@
                     <th>付款方式</th>
                     <th>實名狀態</th>
                     <th>訂單狀態</th>
-                    <th>鎖定狀態</th>
+                    <th>完成時間</th> <th>鎖定狀態</th>
                     <th>動作</th>
                 </tr>
             </thead>
@@ -129,7 +133,6 @@
                 document.getElementById('orders-table').style.display = 'none';
             }
 
-            // ⚠️ 記得確保 Supabase 的 orders 資料表裡已經有 completed_at 這個欄位
             const { data, error } = await supabaseClient
                 .from('orders')
                 .select('id, order_no, uid, nickname, server_str, realname_status, item_name, final_amount, payment_method, extra_gifts, is_locked, operator, status, line_name, completed_at')
@@ -156,12 +159,9 @@
 
             const filteredData = allOrdersData.filter(order => {
                 const currentStatus = order.status || 'pending';
-                
                 const matchStatus = (statusFilter === 'all') || (currentStatus === statusFilter);
-                
                 const searchString = `${order.order_no} ${order.uid} ${order.nickname} ${order.line_name}`.toLowerCase();
                 const matchSearch = searchString.includes(searchTerm);
-
                 return matchStatus && matchSearch;
             });
 
@@ -193,7 +193,6 @@
                 }
 
                 const currentStatus = order.status || 'pending';
-                // ✨ 狀態選單新增：✅ 已完成
                 const statusDropdownHtml = `
                     <select class="status-dropdown" data-id="${order.id}" onchange="updateOrderStatus(this)" ${isSelectDisabled ? 'disabled' : ''}>
                         <option value="pending" ${currentStatus === 'pending' ? 'selected' : ''}>🟡 未付款</option>
@@ -210,6 +209,15 @@
                     </div>
                 `;
 
+                // ✨ 新增：將 UTC 時間轉換為台灣時間 (MM/DD HH:mm)
+                let completedAtHtml = '<span style="color: #ccc;">---</span>';
+                if (order.completed_at) {
+                    const dateObj = new Date(order.completed_at);
+                    const monthDay = dateObj.toLocaleDateString('zh-TW', { month: '2-digit', day: '2-digit' });
+                    const time = dateObj.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
+                    completedAtHtml = `<div class="time-text"><span class="time-date">${monthDay}</span><br>${time}</div>`;
+                }
+
                 tr.innerHTML = `
                     <td><strong>${order.order_no || '---'}</strong></td>
                     <td><code>${order.uid || '---'}</code></td>
@@ -219,7 +227,7 @@
                     <td><span class="status-badge status-info">${order.payment_method || '---'}</span></td>
                     <td><span class="status-badge ${statusClass}">${order.realname_status || '待處理'}</span></td>
                     <td>${statusDropdownHtml}</td> 
-                    <td>${lockStatusHtml}</td>
+                    <td>${completedAtHtml}</td> <td>${lockStatusHtml}</td>
                     <td>${actionBtnHtml}</td>
                 `;
                 tbody.appendChild(tr);
@@ -247,7 +255,6 @@
             }
         }
 
-        // ✨ 核心邏輯修改：寫入與清除 completed_at
         async function updateOrderStatus(selectElement) {
             const orderId = selectElement.getAttribute('data-id');
             const newStatus = selectElement.value;
