@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>代充訂單即時對帳監控（包含狀態切換、LINE綁定與進階篩選版）</title>
+    <title>代充訂單即時對帳監控（進階財務修改版）</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; background: #f5f5f7; }
@@ -31,7 +31,24 @@
         .status-warning { background: #fff3cd; color: #856404; }
         .status-info { background: #e8f4fd; color: #0071e3; }
         .status-locked { background: #e2e3e5; color: #383d41; }
-        .amount { font-weight: 600; color: #d9383a; }
+        
+        /* ✨ 新增：無縫輸入框的樣式，平常看不出來是輸入框，滑鼠移過去或點擊才會有框線 */
+        .amount-input { 
+            width: 70px; 
+            padding: 4px 6px; 
+            border: 1px solid transparent; 
+            border-radius: 4px; 
+            font-size: 14px; 
+            font-weight: 700; 
+            color: #d9383a; 
+            background: transparent; 
+            transition: 0.2s; 
+            outline: none;
+        }
+        .amount-input:hover { border-color: #ddd; background: #fff; }
+        .amount-input:focus { border-color: #0071e3; background: #fff; box-shadow: 0 0 0 2px rgba(0,113,227,0.2); }
+        /* 隱藏數字輸入框上下調整的小箭頭 (Chrome/Safari) */
+        .amount-input::-webkit-outer-spin-button, .amount-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         
         .btn-lock { padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; transition: 0.2s; }
         .btn-lock:hover { background: #218838; }
@@ -47,7 +64,6 @@
         .player-info { display: flex; flex-direction: column; gap: 4px; }
         .line-name { font-size: 12px; color: #888; background: #f0f0f0; padding: 2px 6px; border-radius: 4px; display: inline-block; width: fit-content; }
         
-        /* ✨ 新增完成時間的樣式 */
         .time-text { font-size: 12px; color: #555; }
         .time-date { font-weight: 600; color: #333; }
     </style>
@@ -89,11 +105,11 @@
                     <th>UID</th>
                     <th>玩家 / LINE 暱稱</th>
                     <th>購買品項</th>
-                    <th>實付金額</th>
-                    <th>付款方式</th>
+                    <th>實付金額</th> <th>付款方式</th>
                     <th>實名狀態</th>
                     <th>訂單狀態</th>
-                    <th>完成時間</th> <th>鎖定狀態</th>
+                    <th>完成時間</th>
+                    <th>鎖定狀態</th>
                     <th>動作</th>
                 </tr>
             </thead>
@@ -178,6 +194,7 @@
                 let lockStatusHtml = '<span class="status-badge status-info">待處理 ☕</span>';
                 let actionBtnHtml = `<button class="btn-lock" onclick="toggleLock(${order.id}, true)">🔒 我來處理</button>`;
                 let isSelectDisabled = false; 
+                let isAmountDisabled = false; // ✨ 如果被別人鎖定，金額也不能改
                 
                 if (order.is_locked) {
                     if (order.operator === currentOp) {
@@ -189,6 +206,7 @@
                         lockStatusHtml = `<span class="status-badge status-locked">❌ ${order.operator} 處理中</span>`;
                         actionBtnHtml = `<button class="btn-lock" disabled style="background:#ccc; cursor:not-allowed;">已被鎖定</button>`;
                         isSelectDisabled = true; 
+                        isAmountDisabled = true;
                     }
                 }
 
@@ -209,7 +227,6 @@
                     </div>
                 `;
 
-                // ✨ 新增：將 UTC 時間轉換為台灣時間 (MM/DD HH:mm)
                 let completedAtHtml = '<span style="color: #ccc;">---</span>';
                 if (order.completed_at) {
                     const dateObj = new Date(order.completed_at);
@@ -223,11 +240,16 @@
                     <td><code>${order.uid || '---'}</code></td>
                     <td>${playerNameHtml}</td> 
                     <td>${order.item_name || '---'}</td>
-                    <td class="amount">$${order.final_amount || '0'}</td>
+                    <td style="white-space: nowrap;">
+                        <span style="color: #d9383a; font-weight: 700;">$</span>
+                        <input type="number" class="amount-input" data-id="${order.id}" value="${order.final_amount || 0}" 
+                               onchange="updateFinalAmount(this)" ${isAmountDisabled ? 'disabled' : ''}>
+                    </td>
                     <td><span class="status-badge status-info">${order.payment_method || '---'}</span></td>
                     <td><span class="status-badge ${statusClass}">${order.realname_status || '待處理'}</span></td>
                     <td>${statusDropdownHtml}</td> 
-                    <td>${completedAtHtml}</td> <td>${lockStatusHtml}</td>
+                    <td>${completedAtHtml}</td>
+                    <td>${lockStatusHtml}</td>
                     <td>${actionBtnHtml}</td>
                 `;
                 tbody.appendChild(tr);
@@ -236,23 +258,37 @@
             document.getElementById('orders-table').style.display = 'table';
         }
 
-        async function toggleLock(orderId, shouldLock) {
-            const currentOp = getCurrentOperator();
-            
-            const updateData = shouldLock 
-                ? { is_locked: true, operator: currentOp } 
-                : { is_locked: false, operator: null };
+        // ✨ 核心邏輯新增：更新實付金額
+        async function updateFinalAmount(inputElement) {
+            const orderId = inputElement.getAttribute('data-id');
+            const newAmount = parseInt(inputElement.value) || 0; // 確保是數字
+
+            // 儲存中給一點視覺回饋 (變半透明)
+            inputElement.style.opacity = '0.5';
 
             const { error } = await supabaseClient
                 .from('orders')
-                .update(updateData)
+                .update({ final_amount: newAmount })
                 .eq('id', orderId);
 
             if (error) {
-                alert('操作失敗：' + error.message);
+                alert('金額更新失敗，請檢查權限或網路：' + error.message);
+                fetchOrders(); // 失敗的話，向資料庫要回原本正確的數字
             } else {
-                fetchOrders();
+                // 成功的話，讓輸入框閃一下綠色提示業務
+                inputElement.style.opacity = '1';
+                inputElement.style.backgroundColor = '#e3fbe3';
+                setTimeout(() => {
+                    inputElement.style.backgroundColor = 'transparent';
+                }, 1000);
             }
+        }
+
+        async function toggleLock(orderId, shouldLock) {
+            const currentOp = getCurrentOperator();
+            const updateData = shouldLock ? { is_locked: true, operator: currentOp } : { is_locked: false, operator: null };
+            const { error } = await supabaseClient.from('orders').update(updateData).eq('id', orderId);
+            if (error) alert('操作失敗：' + error.message); else fetchOrders();
         }
 
         async function updateOrderStatus(selectElement) {
@@ -261,73 +297,34 @@
             const statusText = selectElement.options[selectElement.selectedIndex].text;
 
             if (!confirm(`確定要將這筆訂單改為「${statusText}」嗎？`)) {
-                renderOrders(); 
-                return;
+                renderOrders(); return;
             }
 
             const updatePayload = { status: newStatus };
-            
-            if (newStatus === 'completed') {
-                updatePayload.completed_at = new Date().toISOString();
-            } else {
-                updatePayload.completed_at = null;
-            }
+            if (newStatus === 'completed') updatePayload.completed_at = new Date().toISOString();
+            else updatePayload.completed_at = null;
 
-            const { error } = await supabaseClient
-                .from('orders')
-                .update(updatePayload)
-                .eq('id', orderId);
-
-            if (error) {
-                alert('狀態更新失敗，請檢查網路：' + error.message);
-            } 
-            
+            const { error } = await supabaseClient.from('orders').update(updatePayload).eq('id', orderId);
+            if (error) alert('狀態更新失敗：' + error.message); 
             fetchOrders(); 
         }
 
-        function openConfigModal() {
-            document.getElementById('config-modal').style.display = 'flex';
-            document.getElementById('new-token-input').value = '';
-        }
-
-        function closeConfigModal() {
-            document.getElementById('config-modal').style.display = 'none';
-        }
-
+        function openConfigModal() { document.getElementById('config-modal').style.display = 'flex'; document.getElementById('new-token-input').value = ''; }
+        function closeConfigModal() { document.getElementById('config-modal').style.display = 'none'; }
+        
         async function saveToken() {
             const newToken = document.getElementById('new-token-input').value.trim();
-            if (!newToken) {
-                alert('⚠️ 請先輸入 Token！');
-                return;
-            }
-            
-            const saveBtn = event.target;
-            saveBtn.innerText = '儲存中...';
-            saveBtn.disabled = true;
-
-            const { error } = await supabaseClient
-                .rpc('update_meow_token_securely', { new_token: newToken });
-
-            saveBtn.innerText = '💾 儲存並更新';
-            saveBtn.disabled = false;
-
-            if (error) {
-                alert('❌ Token 更新失敗：' + error.message);
-            } else {
-                alert('✅ Token 已成功存入雲端資料庫！\n家裡的地端小鷹將在下一輪巡邏自動裝填新彈藥並重試。');
-                closeConfigModal();
-            }
+            if (!newToken) { alert('⚠️ 請先輸入 Token！'); return; }
+            const saveBtn = event.target; saveBtn.innerText = '儲存中...'; saveBtn.disabled = true;
+            const { error } = await supabaseClient.rpc('update_meow_token_securely', { new_token: newToken });
+            saveBtn.innerText = '💾 儲存並更新'; saveBtn.disabled = false;
+            if (error) { alert('❌ Token 更新失敗：' + error.message); } 
+            else { alert('✅ Token 已成功存入！'); closeConfigModal(); }
         }
 
         const ordersListener = supabaseClient
             .channel('public-orders-changes')
-            .on(
-                'postgres_changes',
-                { event: '*', schema: 'public', table: 'orders' },
-                (payload) => {
-                    fetchOrders(); 
-                }
-            )
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload) => { fetchOrders(); })
             .subscribe();
 
         fetchOrders();
