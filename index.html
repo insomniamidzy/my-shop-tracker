@@ -61,6 +61,7 @@
                     <option value="all">👁️ 全部狀態</option>
                     <option value="pending">🟡 只看未付款</option>
                     <option value="paid">🟢 只看已付款</option>
+                    <option value="completed">✅ 只看已完成</option>
                     <option value="cancelled">🔴 只看已取消</option>
                 </select>
                 <button onclick="openConfigModal()" class="btn-lock" style="background: #6c757d; margin-left: auto;">⚙️ 設定</button>
@@ -128,9 +129,10 @@
                 document.getElementById('orders-table').style.display = 'none';
             }
 
+            // ⚠️ 記得確保 Supabase 的 orders 資料表裡已經有 completed_at 這個欄位
             const { data, error } = await supabaseClient
                 .from('orders')
-                .select('id, order_no, uid, nickname, server_str, realname_status, item_name, final_amount, payment_method, extra_gifts, is_locked, operator, status, line_name')
+                .select('id, order_no, uid, nickname, server_str, realname_status, item_name, final_amount, payment_method, extra_gifts, is_locked, operator, status, line_name, completed_at')
                 .order('id', { ascending: false });
 
             document.getElementById('loading').style.display = 'none';
@@ -191,10 +193,12 @@
                 }
 
                 const currentStatus = order.status || 'pending';
+                // ✨ 狀態選單新增：✅ 已完成
                 const statusDropdownHtml = `
                     <select class="status-dropdown" data-id="${order.id}" onchange="updateOrderStatus(this)" ${isSelectDisabled ? 'disabled' : ''}>
                         <option value="pending" ${currentStatus === 'pending' ? 'selected' : ''}>🟡 未付款</option>
                         <option value="paid" ${currentStatus === 'paid' ? 'selected' : ''}>🟢 已付款</option>
+                        <option value="completed" ${currentStatus === 'completed' ? 'selected' : ''}>✅ 已完成</option>
                         <option value="cancelled" ${currentStatus === 'cancelled' ? 'selected' : ''}>🔴 已取消</option>
                     </select>
                 `;
@@ -243,6 +247,7 @@
             }
         }
 
+        // ✨ 核心邏輯修改：寫入與清除 completed_at
         async function updateOrderStatus(selectElement) {
             const orderId = selectElement.getAttribute('data-id');
             const newStatus = selectElement.value;
@@ -253,9 +258,17 @@
                 return;
             }
 
+            const updatePayload = { status: newStatus };
+            
+            if (newStatus === 'completed') {
+                updatePayload.completed_at = new Date().toISOString();
+            } else {
+                updatePayload.completed_at = null;
+            }
+
             const { error } = await supabaseClient
                 .from('orders')
-                .update({ status: newStatus })
+                .update(updatePayload)
                 .eq('id', orderId);
 
             if (error) {
@@ -265,7 +278,6 @@
             fetchOrders(); 
         }
 
-        // ✨ 新增：彈出視窗與寫入資料庫的控制邏輯
         function openConfigModal() {
             document.getElementById('config-modal').style.display = 'flex';
             document.getElementById('new-token-input').value = '';
@@ -286,7 +298,6 @@
             saveBtn.innerText = '儲存中...';
             saveBtn.disabled = true;
 
-            // 🚀 (全新的 RPC 投幣箱寫法)
             const { error } = await supabaseClient
                 .rpc('update_meow_token_securely', { new_token: newToken });
 
