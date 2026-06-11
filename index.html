@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>代充訂單即時對帳監控（月結算與精準品項換算版）</title>
+    <title>代充訂單即時對帳監控（伺服器欄位顯示版）</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; background: #f5f5f7; }
@@ -31,6 +31,7 @@
         .status-warning { background: #fff3cd; color: #856404; }
         .status-info { background: #e8f4fd; color: #0071e3; }
         .status-gift { background: #fdf3e8; color: #e37e00; } 
+        .status-server { background: #e8ecef; color: #495057; border: 1px solid #dee2e6; } /* ✨ 伺服器專用樣式 */
         .status-locked { background: #e2e3e5; color: #383d41; }
         
         .amount-input { width: 70px; padding: 4px 6px; border: 1px solid transparent; border-radius: 4px; font-size: 14px; font-weight: 700; color: #d9383a; background: transparent; transition: 0.2s; outline: none; }
@@ -43,7 +44,6 @@
         .btn-unlock { padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; transition: 0.2s; }
         .btn-unlock:hover { background: #c82333; }
 
-        /* ✨ 新增：複製按鈕專用樣式 */
         .btn-copy { padding: 6px 12px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; transition: 0.2s; width: 100%; box-sizing: border-box; }
         .btn-copy:hover { background: #138496; }
 
@@ -112,7 +112,7 @@
             <thead>
                 <tr>
                     <th>訂單編號</th>
-                    <th>UID</th>
+                    <th>伺服器</th> <th>UID</th>
                     <th>玩家 / LINE 暱稱</th>
                     <th>購買品項</th>
                     <th>贈品數 (60)</th>
@@ -296,7 +296,6 @@
                     completedAtHtml = `<div class="time-text"><span class="time-date">${monthDay}</span><br>${time}</div>`;
                 }
 
-                // ✨ 這裡將鎖定按鈕與一鍵複製按鈕垂直排列
                 const finalActionHtml = `
                     <div style="display: flex; flex-direction: column; gap: 6px;">
                         ${actionBtnHtml}
@@ -306,7 +305,7 @@
 
                 tr.innerHTML = `
                     <td><strong>${order.order_no || '---'}</strong></td>
-                    <td><code>${order.uid || '---'}</code></td>
+                    <td><span class="status-badge status-server">${order.server_str || '亞洲服'}</span></td> <td><code>${order.uid || '---'}</code></td>
                     <td>${playerNameHtml}</td> 
                     <td>${order.item_name || '---'}</td>
                     <td><span class="status-badge status-gift">🎁 +${order.extra_gifts || 0}</span></td>
@@ -335,23 +334,20 @@
             document.getElementById('stats-dashboard').style.display = 'block';
         }
 
-        // ✨ 新增：一鍵複製格式化明細功能
         function copyOrderInfo(orderId, btnElement) {
             const order = allOrdersData.find(o => o.id === orderId);
             if (!order) return;
 
-            // 組合專屬顏文字與欄位資料
             const textToCopy = `𓊆ྀི 伺服器𓊇ྀི：${order.server_str || '亞洲服'}
 𓊆ྀི 遊戲暱稱𓊇ྀི：${order.nickname || ''}
 𓊆ྀི UID𓊇ྀི：${order.uid || ''}
 𓊆ྀི 遊戲名稱𓊇ྀི：第五人格
 𓊆ྀི 購買商品𓊇ྀི：${order.item_name || ''}
+𓊆ྀི 贈品數量𓊇ྀི：${order.extra_gifts || 0}
 𓊆ྀི IG/LINE名稱𓊇ྀི：${order.line_name || ''}
 𓊆ྀི 付款金額𓊇ྀི：${order.final_amount || 0}`;
 
-            // 寫入剪貼簿
             navigator.clipboard.writeText(textToCopy).then(() => {
-                // 成功後，按鈕變成綠色打勾提示，2秒後恢復原狀
                 const originalText = btnElement.innerText;
                 btnElement.innerText = '✅ 已複製';
                 btnElement.style.background = '#28a745';
