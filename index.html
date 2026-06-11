@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>代充訂單即時對帳監控（轉單與點數結算版）</title>
+    <title>代充訂單即時對帳監控（單日結算與智能原價版）</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; background: #f5f5f7; }
@@ -39,7 +39,6 @@
         .amount-input:focus { border-color: #0071e3; background: #fff; box-shadow: 0 0 0 2px rgba(0,113,227,0.2); }
         .amount-input::-webkit-outer-spin-button, .amount-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         
-        /* 轉單 Checkbox 樣式 */
         .transfer-checkbox { width: 18px; height: 18px; cursor: pointer; accent-color: #8e44ad; }
 
         .btn-lock { padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; transition: 0.2s; }
@@ -76,7 +75,6 @@
         .dash-item { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; color: #555; }
         .dash-val { font-weight: 700; color: #0071e3; }
         .dash-total { margin-top: 12px; padding-top: 10px; border-top: 1px dashed #ccc; font-size: 16px; font-weight: 800; color: #d9383a; display: flex; justify-content: space-between; }
-        /* 點數結算強調顏色 */
         .points-text { color: #8e44ad; font-weight: 800; }
     </style>
 </head>
@@ -89,7 +87,7 @@
             <div class="tools-zone">
                 <input type="text" id="search-input" class="search-input" placeholder="🔍 搜尋訂單號 / UID / 遊戲暱稱..." oninput="renderOrders()">
                 
-                <input type="month" id="month-filter" class="user-select" title="選擇月份來結算" onchange="renderOrders()">
+                <input type="date" id="date-filter" class="user-select" title="選擇單日結算" onchange="renderOrders()">
 
                 <select id="status-filter" class="user-select" onchange="renderOrders()">
                     <option value="all">👁️ 全部狀態</option>
@@ -117,7 +115,8 @@
             <thead>
                 <tr>
                     <th>訂單編號</th>
-                    <th>轉單</th> <th>伺服器</th> 
+                    <th>轉單</th>
+                    <th>伺服器</th> 
                     <th>UID</th>
                     <th>玩家 / LINE 暱稱</th>
                     <th>購買品項</th>
@@ -145,7 +144,8 @@
         <div class="dash-item"><span>60 點數 (贈品)：</span> <span class="dash-val" id="stat-60">0 單</span></div>
         <div class="dash-item"><span>✅ 已完成總量：</span> <span class="dash-val" id="stat-count" style="color: #1e7e34;">0 筆</span></div>
         <div class="dash-item" style="border-top: 1px dashed #ccc; padding-top: 8px;">
-            <span>✨ 總花費點數：</span> <span class="dash-val points-text" id="stat-points">0 點</span> </div>
+            <span>✨ 總花費點數：</span> <span class="dash-val points-text" id="stat-points">0 點</span>
+        </div>
         <div class="dash-total"><span>💰 總實收：</span> <span id="stat-amount">$0</span></div>
     </div>
 
@@ -182,7 +182,6 @@
 
             const { data, error } = await supabaseClient
                 .from('orders')
-                // ✨ 新增撈取 is_transfer 欄位
                 .select('id, order_no, uid, nickname, server_str, realname_status, item_name, final_amount, payment_method, extra_gifts, is_locked, operator, status, line_name, completed_at, created_at, is_transfer')
                 .order('id', { ascending: false });
 
@@ -201,7 +200,7 @@
             const currentOp = getCurrentOperator();
             const statusFilter = document.getElementById('status-filter').value;
             const searchTerm = document.getElementById('search-input').value.toLowerCase();
-            const monthFilter = document.getElementById('month-filter').value; 
+            const dateFilter = document.getElementById('date-filter').value; // ✨ 抓取單日數值
             
             const tbody = document.getElementById('orders-body');
             tbody.innerHTML = ''; 
@@ -217,16 +216,17 @@
                 const searchString = `${order.order_no} ${order.uid} ${order.nickname} ${order.line_name}`.toLowerCase();
                 const matchSearch = searchString.includes(searchTerm);
                 
-                let matchMonth = true;
-                if (monthFilter) {
+                // ✨ 這裡改為精準比對 YYYY-MM-DD
+                let matchDate = true;
+                if (dateFilter) {
                     const dateToMatch = order.completed_at || order.created_at;
                     if (dateToMatch) {
-                        matchMonth = dateToMatch.startsWith(monthFilter);
+                        matchDate = dateToMatch.startsWith(dateFilter);
                     } else {
-                        matchMonth = false;
+                        matchDate = false;
                     }
                 }
-                return matchStatus && matchSearch && matchMonth;
+                return matchStatus && matchSearch && matchDate;
             });
 
             filteredData.forEach(order => {
@@ -313,7 +313,6 @@
                     </div>
                 `;
 
-                // ✨ 轉單 Checkbox HTML 組合
                 const isTransferChecked = order.is_transfer ? 'checked' : '';
                 const transferHtml = `
                     <div style="text-align: center;">
@@ -325,7 +324,8 @@
 
                 tr.innerHTML = `
                     <td><strong>${order.order_no || '---'}</strong></td>
-                    <td>${transferHtml}</td> <td><span class="status-badge status-server">${order.server_str || '亞洲服'}</span></td> 
+                    <td>${transferHtml}</td>
+                    <td><span class="status-badge status-server">${order.server_str || '亞洲服'}</span></td> 
                     <td><code>${order.uid || '---'}</code></td>
                     <td>${playerNameHtml}</td> 
                     <td>${order.item_name || '---'}</td>
@@ -347,19 +347,19 @@
 
             document.getElementById('orders-table').style.display = 'table';
 
-            // ✨ 結算與點數計算邏輯
             const totalPoints = (count759 * 1220) + (count60 * 120);
 
             document.getElementById('stat-759').innerText = count759 + ' 單位';
             document.getElementById('stat-60').innerText = count60 + ' 單位';
             document.getElementById('stat-count').innerText = totalCompletedCount + ' 筆';
-            document.getElementById('stat-points').innerText = totalPoints.toLocaleString() + ' 點'; // ✨ 更新點數顯示
+            document.getElementById('stat-points').innerText = totalPoints.toLocaleString() + ' 點'; 
             document.getElementById('stat-amount').innerText = '$' + totalCompletedAmount.toLocaleString();
-            document.getElementById('dash-month-label').innerText = monthFilter ? `(${monthFilter.replace('-', '年')}月)` : '(全部時間)';
+            
+            // ✨ 儀表板顯示當前篩選的日期
+            document.getElementById('dash-month-label').innerText = dateFilter ? `(${dateFilter.replace(/-/g, '/')})` : '(全部時間)';
             document.getElementById('stats-dashboard').style.display = 'block';
         }
 
-        // ✨ 轉單開關觸發邏輯：自動計算公式 (總回聲 / 759) * 242
         async function handleTransferToggle(checkbox) {
             const orderId = checkbox.getAttribute('data-id');
             const itemName = checkbox.getAttribute('data-item') || '';
@@ -367,48 +367,68 @@
 
             let updatePayload = { is_transfer: isTransfer };
 
-            if (isTransfer) {
-                // 解析商品字串拿取回聲數量與購買組數
-                let baseEcho = 0;
-                let qty = 1;
-                const echoMatch = itemName.match(/(\d+)\s*回聲/);
-                if (echoMatch) baseEcho = parseInt(echoMatch[1]);
-                
-                const qtyMatch = itemName.match(/[xX*]\s*(\d+)/);
-                if (qtyMatch) qty = parseInt(qtyMatch[1]);
+            // 共用解析邏輯：抓取總回聲數量
+            let baseEcho = 0; let qty = 1;
+            const echoMatch = itemName.match(/(\d+)\s*回聲/);
+            if (echoMatch) baseEcho = parseInt(echoMatch[1]);
+            const qtyMatch = itemName.match(/[xX*]\s*(\d+)/);
+            if (qtyMatch) qty = parseInt(qtyMatch[1]);
+            const totalEchoes = baseEcho * qty;
 
+            if (isTransfer) {
                 if (baseEcho > 0 && baseEcho % 759 === 0) {
-                    // 套用公式： (回聲總數 / 759) * 242
-                    const totalEchoes = baseEcho * qty;
                     const newAmount = Math.floor((totalEchoes / 759) * 242);
-                    
                     if (confirm(`【轉單計算確認】\n商品：${itemName}\n\n系統將自動把金額修改為：NT$ ${newAmount}\n確定要執行轉單嗎？`)) {
                         updatePayload.final_amount = newAmount;
                     } else {
                         checkbox.checked = false;
-                        return; // 取消操作
+                        return; 
                     }
                 } else {
-                    alert('⚠️ 無法自動辨識該品項的回聲數量（或是非 759 的倍數），請手動修改實付金額。');
+                    alert('⚠️ 無法自動辨識該品項的回聲數量，請手動修改實付金額。');
                 }
             } else {
-                if (!confirm('【取消轉單】\n\n注意：這不會自動還原原始金額，取消後請您「手動」將實付金額改回原本的定價。確定要取消嗎？')) {
-                    checkbox.checked = true;
-                    return; // 取消操作
+                // ✨ 智能原價對照表：在這裡建立你的公定價字典
+                const standardPriceMap = {
+                    759: 265,
+                    1518: 530,
+                    2277: 780,
+                    3795: 1280,
+                    5313: 1785,
+                    6072: 2020,
+                    7590: 2475,
+                    15180: 4950,
+                    22770: 7400,
+                    30360: 9800
+                };
+
+                const revertedPrice = standardPriceMap[totalEchoes];
+
+                if (revertedPrice) {
+                    if (confirm(`【取消轉單】\n系統將自動把金額恢復為原價：NT$ ${revertedPrice}\n確定要執行嗎？`)) {
+                        updatePayload.final_amount = revertedPrice;
+                    } else {
+                        checkbox.checked = true;
+                        return;
+                    }
+                } else {
+                    if (!confirm(`【取消轉單】\n系統找不到 ${totalEchoes} 回聲的預設原價。\n取消後請您「手動」將實付金額改回原本的定價。確定要取消嗎？`)) {
+                        checkbox.checked = true;
+                        return; 
+                    }
                 }
             }
 
-            // 鎖定 checkbox 避免重複點擊
             checkbox.disabled = true;
             const { error } = await supabaseClient.from('orders').update(updatePayload).eq('id', orderId);
             
             if (error) {
                 alert('更新失敗，請檢查網路：' + error.message);
-                checkbox.checked = !isTransfer; // 復原
+                checkbox.checked = !isTransfer; 
             }
             
             checkbox.disabled = false;
-            fetchOrders(); // 重新讀取資料以更新畫面上的金額輸入框
+            fetchOrders(); 
         }
 
         function copyOrderInfo(orderId, btnElement) {
