@@ -30,7 +30,7 @@
         .status-success { background: #e3fbe3; color: #1e7e34; }
         .status-warning { background: #fff3cd; color: #856404; }
         .status-info { background: #e8f4fd; color: #0071e3; }
-        .status-gift { background: #fdf3e8; color: #e37e00; } /* 🎁 贈品專用顏色 */
+        .status-gift { background: #fdf3e8; color: #e37e00; } 
         .status-locked { background: #e2e3e5; color: #383d41; }
         
         .amount-input { width: 70px; padding: 4px 6px; border: 1px solid transparent; border-radius: 4px; font-size: 14px; font-weight: 700; color: #d9383a; background: transparent; transition: 0.2s; outline: none; }
@@ -42,6 +42,10 @@
         .btn-lock:hover { background: #218838; }
         .btn-unlock { padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; transition: 0.2s; }
         .btn-unlock:hover { background: #c82333; }
+
+        /* ✨ 新增：複製按鈕專用樣式 */
+        .btn-copy { padding: 6px 12px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; transition: 0.2s; width: 100%; box-sizing: border-box; }
+        .btn-copy:hover { background: #138496; }
 
         .status-dropdown { padding: 4px 8px; border-radius: 6px; border: 1px solid #ccc; font-size: 13px; font-weight: 600; cursor: pointer; }
         .status-dropdown:disabled { cursor: not-allowed; background-color: #eee; }
@@ -111,7 +115,8 @@
                     <th>UID</th>
                     <th>玩家 / LINE 暱稱</th>
                     <th>購買品項</th>
-                    <th>贈品數 (60)</th> <th>實付金額</th>
+                    <th>贈品數 (60)</th>
+                    <th>實付金額</th>
                     <th>付款方式</th>
                     <th>實名狀態</th>
                     <th>訂單狀態</th>
@@ -218,33 +223,23 @@
             filteredData.forEach(order => {
                 const tr = document.createElement('tr');
                 
-                // 📊 核心統計邏輯：精準換算
                 if (order.status === 'completed') {
                     totalCompletedCount++;
                     totalCompletedAmount += (parseInt(order.final_amount) || 0);
                     
-                    // ✨ 1. 計算 60 點數：直接從資料庫的 extra_gifts 拿
                     count60 += (parseInt(order.extra_gifts) || 0);
 
-                    // ✨ 2. 計算 759 點數：使用正則表達式解析品名 (例如 "1518 回聲 x 2")
                     const itemName = order.item_name || '';
-                    // 抓取回聲前面的數字 (例如抓出 1518)
                     const echoMatch = itemName.match(/(\d+)\s*回聲/);
                     if (echoMatch) {
                         const baseEcho = parseInt(echoMatch[1]);
-                        
-                        // 確保它是 759 的倍數產品 (例如 759, 1518, 2277...)
                         if (baseEcho % 759 === 0) {
-                            const baseUnits = baseEcho / 759; // 例如 1518 / 759 = 2 單位
-                            
-                            // 抓取後面的數量 (支援 x2, X 2, *3 等格式)
-                            let qty = 1; // 預設為 1 組
+                            const baseUnits = baseEcho / 759; 
+                            let qty = 1; 
                             const qtyMatch = itemName.match(/[xX*]\s*(\d+)/);
                             if (qtyMatch) {
                                 qty = parseInt(qtyMatch[1]);
                             }
-                            
-                            // 總數 = 每包包含的單位 * 購買包數
                             count759 += (baseUnits * qty);
                         }
                     }
@@ -301,6 +296,14 @@
                     completedAtHtml = `<div class="time-text"><span class="time-date">${monthDay}</span><br>${time}</div>`;
                 }
 
+                // ✨ 這裡將鎖定按鈕與一鍵複製按鈕垂直排列
+                const finalActionHtml = `
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                        ${actionBtnHtml}
+                        <button class="btn-copy" onclick="copyOrderInfo(${order.id}, this)">📋 複製明細</button>
+                    </div>
+                `;
+
                 tr.innerHTML = `
                     <td><strong>${order.order_no || '---'}</strong></td>
                     <td><code>${order.uid || '---'}</code></td>
@@ -317,7 +320,7 @@
                     <td>${statusDropdownHtml}</td> 
                     <td>${completedAtHtml}</td>
                     <td>${lockStatusHtml}</td>
-                    <td>${actionBtnHtml}</td>
+                    <td>${finalActionHtml}</td>
                 `;
                 tbody.appendChild(tr);
             });
@@ -330,6 +333,37 @@
             document.getElementById('stat-amount').innerText = '$' + totalCompletedAmount.toLocaleString();
             document.getElementById('dash-month-label').innerText = monthFilter ? `(${monthFilter.replace('-', '年')}月)` : '(全部時間)';
             document.getElementById('stats-dashboard').style.display = 'block';
+        }
+
+        // ✨ 新增：一鍵複製格式化明細功能
+        function copyOrderInfo(orderId, btnElement) {
+            const order = allOrdersData.find(o => o.id === orderId);
+            if (!order) return;
+
+            // 組合專屬顏文字與欄位資料
+            const textToCopy = `𓊆ྀི 伺服器𓊇ྀི：${order.server_str || '亞洲服'}
+𓊆ྀི 遊戲暱稱𓊇ྀི：${order.nickname || ''}
+𓊆ྀི UID𓊇ྀི：${order.uid || ''}
+𓊆ྀི 遊戲名稱𓊇ྀི：第五人格
+𓊆ྀི 購買商品𓊇ྀི：${order.item_name || ''}
+𓊆ྀི IG/LINE名稱𓊇ྀི：${order.line_name || ''}
+𓊆ྀི 付款金額𓊇ྀི：${order.final_amount || 0}`;
+
+            // 寫入剪貼簿
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                // 成功後，按鈕變成綠色打勾提示，2秒後恢復原狀
+                const originalText = btnElement.innerText;
+                btnElement.innerText = '✅ 已複製';
+                btnElement.style.background = '#28a745';
+                
+                setTimeout(() => {
+                    btnElement.innerText = originalText;
+                    btnElement.style.background = '#17a2b8';
+                }, 2000);
+            }).catch(err => {
+                alert('複製失敗，請檢查瀏覽器權限。');
+                console.error('複製失敗:', err);
+            });
         }
 
         async function updateFinalAmount(inputElement) {
