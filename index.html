@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>代充訂單即時對帳監控（單日結算與智能原價版）</title>
+    <title>代充訂單即時對帳監控（含智能匯出功能版）</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; background: #f5f5f7; }
@@ -47,6 +47,10 @@
         .btn-unlock:hover { background: #c82333; }
         .btn-copy { padding: 6px 12px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; transition: 0.2s; width: 100%; box-sizing: border-box; }
         .btn-copy:hover { background: #138496; }
+
+        /* ✨ 匯出按鈕專用美化樣式 */
+        .btn-export { padding: 6px 14px; background: #107c41; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; transition: 0.2s; display: flex; align-items: center; gap: 6px; }
+        .btn-export:hover { background: #0b592e; box-shadow: 0 2px 6px rgba(16,124,65,0.2); }
 
         .status-dropdown { padding: 4px 8px; border-radius: 6px; border: 1px solid #ccc; font-size: 13px; font-weight: 600; cursor: pointer; }
         .status-dropdown:disabled { cursor: not-allowed; background-color: #eee; }
@@ -97,6 +101,9 @@
                     <option value="contacting">🕵️ 找人中</option>
                     <option value="cancelled">🔴 只看已取消</option>
                 </select>
+
+                <button onclick="exportToCSV()" class="btn-export">📥 匯出顯示資料</button>
+
                 <button onclick="openConfigModal()" class="btn-lock" style="background: #6c757d; margin-left: auto;">⚙️ 設定</button>
             </div>
             
@@ -168,6 +175,7 @@
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         let allOrdersData = [];
+        let currentlyFilteredOrders = []; // ✨ 用來同步儲存當前被篩選出來的乾淨資料
 
         function getCurrentOperator() {
             return document.getElementById('operator-select').value;
@@ -200,7 +208,7 @@
             const currentOp = getCurrentOperator();
             const statusFilter = document.getElementById('status-filter').value;
             const searchTerm = document.getElementById('search-input').value.toLowerCase();
-            const dateFilter = document.getElementById('date-filter').value; // ✨ 抓取單日數值
+            const dateFilter = document.getElementById('date-filter').value; 
             
             const tbody = document.getElementById('orders-body');
             tbody.innerHTML = ''; 
@@ -210,13 +218,13 @@
             let totalCompletedCount = 0;
             let totalCompletedAmount = 0;
 
-            const filteredData = allOrdersData.filter(order => {
+            // 將篩選結果同步賦值給全局變數，提供給匯出功能使用
+            currentlyFilteredOrders = allOrdersData.filter(order => {
                 const currentStatus = order.status || 'pending';
                 const matchStatus = (statusFilter === 'all') || (currentStatus === statusFilter);
                 const searchString = `${order.order_no} ${order.uid} ${order.nickname} ${order.line_name}`.toLowerCase();
                 const matchSearch = searchString.includes(searchTerm);
                 
-                // ✨ 這裡改為精準比對 YYYY-MM-DD
                 let matchDate = true;
                 if (dateFilter) {
                     const dateToMatch = order.completed_at || order.created_at;
@@ -229,7 +237,7 @@
                 return matchStatus && matchSearch && matchDate;
             });
 
-            filteredData.forEach(order => {
+            currentlyFilteredOrders.forEach(order => {
                 const tr = document.createElement('tr');
                 
                 if (order.status === 'completed') {
@@ -355,9 +363,65 @@
             document.getElementById('stat-points').innerText = totalPoints.toLocaleString() + ' 點'; 
             document.getElementById('stat-amount').innerText = '$' + totalCompletedAmount.toLocaleString();
             
-            // ✨ 儀表板顯示當前篩選的日期
             document.getElementById('dash-month-label').innerText = dateFilter ? `(${dateFilter.replace(/-/g, '/')})` : '(全部時間)';
             document.getElementById('stats-dashboard').style.display = 'block';
+        }
+
+        // ✨ 新增：純 JavaScript 前端資料智能匯出試算表邏輯 (CSV 格式)
+        function exportToCSV() {
+            if (currentlyFilteredOrders.length === 0) {
+                alert("⚠️ 目前畫面中沒有任何資料可供匯出！");
+                return;
+            }
+
+            // 1. 定義 CSV 試算表的欄位標頭
+            const headers = ["訂單編號", "是否轉單", "伺服器", "UID", "玩家暱稱", "LINE/IG名稱", "購買品項", "超商加贈(60組數)", "實付金額", "付款方式", "實名狀態", "訂單狀態", "完成/建立時間"];
+            
+            // 狀態中文化轉換字典
+            const statusMap = { 'pending': '未付款', 'paid': '已付款', 'completed': '已完成', 'contacting': '找人中', 'cancelled': '已取消' };
+
+            // 2. 迭代組裝資料內容
+            const rows = currentlyFilteredOrders.map(order => {
+                return [
+                    `\t${order.order_no || '---'}`, // 💡 用 \t 隱飾前綴，強力防範 Excel 自動將大數轉為科學記號 (科學代碼熔斷)
+                    order.is_transfer ? "是" : "否",
+                    order.server_str || "亞洲服",
+                    `\t${order.uid || '---'}`,      // 💡 同樣防範 UID 數字過長變形
+                    order.nickname || "---",
+                    order.line_name || "未綁定",
+                    order.item_name || "---",
+                    order.extra_gifts || 0,
+                    order.final_amount || 0,
+                    order.payment_method || "---",
+                    order.realname_status || "待處理",
+                    statusMap[order.status] || order.status || "未付款",
+                    order.completed_at || order.created_at || "---"
+                ];
+            });
+
+            // 3. 結合標頭與內容，並用逗號分隔，處理雙引號以防資料內含特殊符號錯位
+            const csvContent = [headers, ...rows]
+                .map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(","))
+                .join("\n");
+
+            // 4. 加入 UTF-8 BOM (\uFEFF) 確保 Excel 直接按兩下打開時 100% 繁體中文不變亂碼
+            const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+            
+            // 5. 根據篩選日期動態命名檔案
+            const dateFilter = document.getElementById('date-filter').value;
+            const fileName = dateFilter ? `代充對帳單_${dateFilter}.csv` : `代充對帳單_全部儲存.csv`;
+
+            // 6. 建立虛擬下載鏈結並執行
+            const link = document.createElement("a");
+            if (link.download !== undefined) { 
+                const url = URL.createObjectURL(blob);
+                link.setAttribute("href", url);
+                link.setAttribute("download", fileName);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
         }
 
         async function handleTransferToggle(checkbox) {
@@ -367,7 +431,6 @@
 
             let updatePayload = { is_transfer: isTransfer };
 
-            // 共用解析邏輯：抓取總回聲數量
             let baseEcho = 0; let qty = 1;
             const echoMatch = itemName.match(/(\d+)\s*回聲/);
             if (echoMatch) baseEcho = parseInt(echoMatch[1]);
@@ -388,7 +451,6 @@
                     alert('⚠️ 無法自動辨識該品項的回聲數量，請手動修改實付金額。');
                 }
             } else {
-                // ✨ 智能原價對照表：在這裡建立你的公定價字典
                 const standardPriceMap = {
                     759: 265,
                     1518: 530,
