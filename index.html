@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>代充訂單即時對帳監控（伺服器欄位顯示版）</title>
+    <title>代充訂單即時對帳監控（新增找人狀態版）</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; background: #f5f5f7; }
@@ -31,7 +31,7 @@
         .status-warning { background: #fff3cd; color: #856404; }
         .status-info { background: #e8f4fd; color: #0071e3; }
         .status-gift { background: #fdf3e8; color: #e37e00; } 
-        .status-server { background: #e8ecef; color: #495057; border: 1px solid #dee2e6; } /* ✨ 伺服器專用樣式 */
+        .status-server { background: #e8ecef; color: #495057; border: 1px solid #dee2e6; }
         .status-locked { background: #e2e3e5; color: #383d41; }
         
         .amount-input { width: 70px; padding: 4px 6px; border: 1px solid transparent; border-radius: 4px; font-size: 14px; font-weight: 700; color: #d9383a; background: transparent; transition: 0.2s; outline: none; }
@@ -92,7 +92,7 @@
                     <option value="pending">🟡 只看未付款</option>
                     <option value="paid">🟢 只看已付款</option>
                     <option value="completed">✅ 只看已完成</option>
-                    <option value="cancelled">🔴 只看已取消</option>
+                    <option value="contacting">🕵️ 找人中</option> <option value="cancelled">🔴 只看已取消</option>
                 </select>
                 <button onclick="openConfigModal()" class="btn-lock" style="background: #6c757d; margin-left: auto;">⚙️ 設定</button>
             </div>
@@ -277,7 +277,7 @@
                         <option value="pending" ${currentStatus === 'pending' ? 'selected' : ''}>🟡 未付款</option>
                         <option value="paid" ${currentStatus === 'paid' ? 'selected' : ''}>🟢 已付款</option>
                         <option value="completed" ${currentStatus === 'completed' ? 'selected' : ''}>✅ 已完成</option>
-                        <option value="cancelled" ${currentStatus === 'cancelled' ? 'selected' : ''}>🔴 已取消</option>
+                        <option value="contacting" ${currentStatus === 'contacting' ? 'selected' : ''}>🕵️ 找人中</option> <option value="cancelled" ${currentStatus === 'cancelled' ? 'selected' : ''}>🔴 已取消</option>
                     </select>
                 `;
 
