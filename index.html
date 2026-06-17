@@ -225,11 +225,17 @@
                 const searchString = `${order.order_no} ${order.uid} ${order.nickname} ${order.line_name}`.toLowerCase();
                 const matchSearch = searchString.includes(searchTerm);
                 
+                // ✨ 升級版時區轉換篩選邏輯
                 let matchDate = true;
                 if (dateFilter) {
-                    const dateToMatch = order.completed_at || order.created_at;
-                    if (dateToMatch) {
-                        matchDate = dateToMatch.startsWith(dateFilter);
+                    const dateString = order.completed_at || order.created_at;
+                    if (dateString) {
+                        // 1. 將資料庫的 UTC 時間字串轉成 JavaScript 的日期物件
+                        const localDate = new Date(dateString);
+                        // 2. 強制以「亞洲/台北」時區，輸出成 YYYY-MM-DD 的格式 (sv-SE 是內建最精準產生此格式的參數)
+                        const taiwanDateStr = localDate.toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+                        // 3. 拿轉換後的台灣日期，去跟篩選器的日期比對
+                        matchDate = (taiwanDateStr === dateFilter);
                     } else {
                         matchDate = false;
                     }
