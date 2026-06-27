@@ -48,7 +48,6 @@
         .btn-copy { padding: 6px 12px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; transition: 0.2s; width: 100%; box-sizing: border-box; }
         .btn-copy:hover { background: #138496; }
 
-        /* ✨ 匯出按鈕專用美化樣式 */
         .btn-export { padding: 6px 14px; background: #107c41; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; transition: 0.2s; display: flex; align-items: center; gap: 6px; }
         .btn-export:hover { background: #0b592e; box-shadow: 0 2px 6px rgba(16,124,65,0.2); }
 
@@ -59,6 +58,11 @@
         code { background: #f4f4f4; padding: 2px 6px; border-radius: 4px; font-family: monospace; }
         .player-info { display: flex; flex-direction: column; gap: 4px; }
         .line-name { font-size: 12px; color: #888; background: #f0f0f0; padding: 2px 6px; border-radius: 4px; display: inline-block; width: fit-content; }
+        
+        /* ✨ 新增：FB 連結專用小按鈕美化樣式 */
+        .fb-link { font-size: 11px; color: #0071e3; text-decoration: none; background: #e8f4fd; padding: 2px 6px; border-radius: 4px; display: inline-block; width: fit-content; border: 1px solid #b6dbfa; transition: 0.2s; margin-top: 2px; text-align: center; }
+        .fb-link:hover { background: #cfe8fc; }
+
         .time-text { font-size: 12px; color: #555; }
         .time-date { font-weight: 600; color: #333; }
 
@@ -90,7 +94,6 @@
             
             <div class="tools-zone">
                 <input type="text" id="search-input" class="search-input" placeholder="🔍 搜尋訂單號 / UID / 遊戲暱稱..." oninput="renderOrders()">
-                
                 <input type="date" id="date-filter" class="user-select" title="選擇單日結算" onchange="renderOrders()">
 
                 <select id="status-filter" class="user-select" onchange="renderOrders()">
@@ -103,7 +106,6 @@
                 </select>
 
                 <button onclick="exportToCSV()" class="btn-export">📥 匯出顯示資料</button>
-
                 <button onclick="openConfigModal()" class="btn-lock" style="background: #6c757d; margin-left: auto;">⚙️ 設定</button>
             </div>
             
@@ -175,7 +177,7 @@
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         let allOrdersData = [];
-        let currentlyFilteredOrders = []; // ✨ 用來同步儲存當前被篩選出來的乾淨資料
+        let currentlyFilteredOrders = []; 
 
         function getCurrentOperator() {
             return document.getElementById('operator-select').value;
@@ -190,7 +192,8 @@
 
             const { data, error } = await supabaseClient
                 .from('orders')
-                .select('id, order_no, uid, nickname, server_str, realname_status, item_name, final_amount, payment_method, extra_gifts, is_locked, operator, status, line_name, completed_at, created_at, is_transfer')
+                // ✨ 核心修改：在 select 欄位最後加上 fb_link 數據提取
+                .select('id, order_no, uid, nickname, server_str, realname_status, item_name, final_amount, payment_method, extra_gifts, is_locked, operator, status, line_name, completed_at, created_at, is_transfer, fb_link')
                 .order('id', { ascending: false });
 
             document.getElementById('loading').style.display = 'none';
@@ -218,23 +221,18 @@
             let totalCompletedCount = 0;
             let totalCompletedAmount = 0;
 
-            // 將篩選結果同步賦值給全局變數，提供給匯出功能使用
             currentlyFilteredOrders = allOrdersData.filter(order => {
                 const currentStatus = order.status || 'pending';
                 const matchStatus = (statusFilter === 'all') || (currentStatus === statusFilter);
                 const searchString = `${order.order_no} ${order.uid} ${order.nickname} ${order.line_name}`.toLowerCase();
                 const matchSearch = searchString.includes(searchTerm);
                 
-                // ✨ 升級版時區轉換篩選邏輯
                 let matchDate = true;
                 if (dateFilter) {
                     const dateString = order.completed_at || order.created_at;
                     if (dateString) {
-                        // 1. 將資料庫的 UTC 時間字串轉成 JavaScript 的日期物件
                         const localDate = new Date(dateString);
-                        // 2. 強制以「亞洲/台北」時區，輸出成 YYYY-MM-DD 的格式 (sv-SE 是內建最精準產生此格式的參數)
                         const taiwanDateStr = localDate.toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
-                        // 3. 拿轉換後的台灣日期，去跟篩選器的日期比對
                         matchDate = (taiwanDateStr === dateFilter);
                     } else {
                         matchDate = false;
@@ -305,10 +303,12 @@
                     </select>
                 `;
 
+                // ✨ 核心修改：在玩家資訊下方，動態加入 FB 個人主頁點擊連結按鈕
                 const playerNameHtml = `
                     <div class="player-info">
                         <strong>🎮 ${order.nickname || '---'}</strong>
                         <span class="line-name">💬 ${order.line_name || '未綁定 LINE'}</span>
+                        ${order.fb_link ? `<a href="${order.fb_link}" target="_blank" class="fb-link">🔗 查看 FB 主頁</a>` : ''}
                     </div>
                 `;
 
@@ -373,28 +373,28 @@
             document.getElementById('stats-dashboard').style.display = 'block';
         }
 
-        // ✨ 新增：純 JavaScript 前端資料智能匯出試算表邏輯 (CSV 格式)
+        // ✨ 核心修改：資料智慧匯出試算表邏輯，增加「FB連結」欄位
         function exportToCSV() {
             if (currentlyFilteredOrders.length === 0) {
                 alert("⚠️ 目前畫面中沒有任何資料可供匯出！");
                 return;
             }
 
-            // 1. 定義 CSV 試算表的欄位標頭
-            const headers = ["訂單編號", "是否轉單", "伺服器", "UID", "玩家暱稱", "LINE/IG名稱", "購買品項", "超商加贈(60組數)", "實付金額", "付款方式", "實名狀態", "訂單狀態", "完成/建立時間"];
+            // 1. 定義 CSV 試算表的欄位標頭，加入 FB連結 欄位
+            const headers = ["訂單編號", "是否轉單", "伺服器", "UID", "玩家暱稱", "LINE/IG名稱", "FB連結", "購買品項", "超商加贈(60組數)", "實付金額", "付款方式", "實名狀態", "訂單狀態", "完成/建立時間"];
             
-            // 狀態中文化轉換字典
             const statusMap = { 'pending': '未付款', 'paid': '已付款', 'completed': '已完成', 'contacting': '找人中', 'cancelled': '已取消' };
 
             // 2. 迭代組裝資料內容
             const rows = currentlyFilteredOrders.map(order => {
                 return [
-                    `\t${order.order_no || '---'}`, // 💡 用 \t 隱飾前綴，強力防範 Excel 自動將大數轉為科學記號 (科學代碼熔斷)
+                    `\t${order.order_no || '---'}`, 
                     order.is_transfer ? "是" : "否",
                     order.server_str || "亞洲服",
-                    `\t${order.uid || '---'}`,      // 💡 同樣防範 UID 數字過長變形
+                    `\t${order.uid || '---'}`,      
                     order.nickname || "---",
                     order.line_name || "未綁定",
+                    order.fb_link || "未提供", // ✨ 注入 FB 連結資料到試算表
                     order.item_name || "---",
                     order.extra_gifts || 0,
                     order.final_amount || 0,
@@ -405,19 +405,15 @@
                 ];
             });
 
-            // 3. 結合標頭與內容，並用逗號分隔，處理雙引號以防資料內含特殊符號錯位
             const csvContent = [headers, ...rows]
                 .map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(","))
                 .join("\n");
 
-            // 4. 加入 UTF-8 BOM (\uFEFF) 確保 Excel 直接按兩下打開時 100% 繁體中文不變亂碼
             const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
             
-            // 5. 根據篩選日期動態命名檔案
             const dateFilter = document.getElementById('date-filter').value;
             const fileName = dateFilter ? `代充對帳單_${dateFilter}.csv` : `代充對帳單_全部儲存.csv`;
 
-            // 6. 建立虛擬下載鏈結並執行
             const link = document.createElement("a");
             if (link.download !== undefined) { 
                 const url = URL.createObjectURL(blob);
@@ -499,6 +495,7 @@
             fetchOrders(); 
         }
 
+        // ✨ 核心修改：在複製一鍵明細範本中，增設 FB個人主頁 欄位
         function copyOrderInfo(orderId, btnElement) {
             const order = allOrdersData.find(o => o.id === orderId);
             if (!order) return;
@@ -510,6 +507,7 @@
 𓊆ྀི 購買商品𓊇ྀི：${order.item_name || ''}
 𓊆ྀི 贈品數量𓊇ྀི：${order.extra_gifts || 0}
 𓊆ྀི IG/LINE名稱𓊇ྀི：${order.line_name || ''}
+𓊆ྀི FB個人主頁𓊇ྀི：${order.fb_link || '未提供'}
 𓊆ྀི 付款金額𓊇ྀི：${order.final_amount || 0}`;
 
             navigator.clipboard.writeText(textToCopy).then(() => {
