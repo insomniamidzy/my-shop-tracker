@@ -255,14 +255,27 @@
                     // ✨ 升級：將組合商品拆解，完美計算每一個品項
                     const items = itemName.split('+').map(i => i.trim());
                     
+                    // ✨ 建立八週年活動專屬【點數】對照表
+                    const eventPointsMap = {
+                        "八週年特惠禮包 (956回聲+5精華)": 999,
+                        "八週年優惠禮包1 (1009回聲+3精華)": 999,
+                        "八週年優惠禮包2 (3448回聲+7精華)": 999,
+                        "八週年優惠禮包3 (6918回聲+15精華)": 999
+                    };
+                    
                     items.forEach(item => {
                         // 抓取數量 (例如 x 2)
                         const qtyMatch = item.match(/[xX*]\s*(\d+)/);
                         const qty = qtyMatch ? parseInt(qtyMatch[1]) : 1;
 
-                        if (item.includes('八週年')) {
-                            // 🎯 攔截活動禮包：每一組暫定以 999 點計算成本
-                            eventPoints += 999 * qty; 
+                        // 💡 將字串後面的 " x 2" 拔掉，還原成乾淨的商品名稱來對比
+                        const baseItemName = item.replace(/\s*[xX*]\s*\d+$/, '').trim();
+
+                        if (baseItemName.includes('八週年')) {
+                            // 🎯 精準對應：找到這款禮包專屬的點數成本
+                            if (eventPointsMap[baseItemName]) {
+                                eventPoints += eventPointsMap[baseItemName] * qty;
+                            }
                         } else {
                             // 常規 759 體系計算
                             const echoMatch = item.match(/(\d+)\s*回聲/);
@@ -444,10 +457,19 @@
 
             let updatePayload = { is_transfer: isTransfer };
 
+            // 1. 定義單項原價表 (常規)
             const retailPriceMap = {
                 759: 265, 1518: 530, 2277: 780, 3036: 1000, 3795: 1280,
                 5313: 1785, 6072: 2020, 7590: 2475, 15180: 4950,
                 22770: 7400, 30360: 9800
+            };
+
+            // ✨ 2. 建立八週年活動專屬【台幣價格】對照表
+            const eventPriceMap = {
+                "八週年特惠禮包 (956回聲+5精華)": { transfer: 999, retail: 999 },
+                "八週年優惠禮包1 (1009回聲+3精華)": { transfer: 999, retail: 999 },
+                "八週年優惠禮包2 (3448回聲+7精華)": { transfer: 999, retail: 999 },
+                "八週年優惠禮包3 (6918回聲+15精華)": { transfer: 999, retail: 999 }
             };
 
             const items = itemName.split('+').map(i => i.trim());
@@ -457,15 +479,19 @@
             let canAutoCalculate = true; 
 
             for (const item of items) {
-                // 抓取數量
                 const qtyMatch = item.match(/[xX*]\s*(\d+)/);
                 const qty = qtyMatch ? parseInt(qtyMatch[1]) : 1;
+                const baseItemName = item.replace(/\s*[xX*]\s*\d+$/, '').trim();
 
-                // ✨ 新增：專門處理「八週年」等特殊活動商品
-                if (item.includes('八週年')) {
-                    totalTransferPrice += 999 * qty; // 轉單成本暫定 999 元
-                    totalRetailPrice += 999 * qty;   // 取消轉單的原價也暫定 999 元
-                    continue; // 處理完畢，直接跳過後面的常規運算，換下一個商品
+                // ✨ 專門處理「八週年」等特殊活動商品
+                if (baseItemName.includes('八週年')) {
+                    if (eventPriceMap[baseItemName]) {
+                        totalTransferPrice += eventPriceMap[baseItemName].transfer * qty; 
+                        totalRetailPrice += eventPriceMap[baseItemName].retail * qty;  
+                    } else {
+                        canAutoCalculate = false;
+                    }
+                    continue; 
                 }
 
                 // 以下為常規 759 倍數商品的處理邏輯
