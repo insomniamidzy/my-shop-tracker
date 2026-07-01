@@ -433,56 +433,76 @@
 
             let updatePayload = { is_transfer: isTransfer };
 
-            let baseEcho = 0; let qty = 1;
-            const echoMatch = itemName.match(/(\d+)\s*回聲/);
-            if (echoMatch) baseEcho = parseInt(echoMatch[1]);
-            const qtyMatch = itemName.match(/[xX*]\s*(\d+)/);
-            if (qtyMatch) qty = parseInt(qtyMatch[1]);
-            const totalEchoes = baseEcho * qty;
+            // 1. 定義單項原價表 (零售價)，用來做「取消轉單」時的恢復依據
+            const retailPriceMap = {
+                759: 265, 1518: 530, 2277: 780, 3036: 1000, 3795: 1280,
+                5313: 1785, 6072: 2020, 7590: 2475, 15180: 4950,
+                22770: 7400, 30360: 9800
+            };
 
+            // 2. 將組合商品拆解成陣列 (例如 ["2277 回聲 x 1", "1518 回聲 x 1"])
+            const items = itemName.split('+').map(i => i.trim());
+            
+            let totalTransferPrice = 0; // 計算轉單總成本
+            let totalRetailPrice = 0;   // 計算恢復原價總額
+            let canAutoCalculate = true; // 判斷是否能完美辨識所有品項
+
+            // 3. 迴圈遍歷每一個組合內的商品，進行加總
+            for (const item of items) {
+                const echoMatch = item.match(/(\d+)\s*回聲/);
+                const qtyMatch = item.match(/[xX*]\s*(\d+)/);
+                
+                if (echoMatch) {
+                    const baseEcho = parseInt(echoMatch[1]);
+                    const qty = qtyMatch ? parseInt(qtyMatch[1]) : 1;
+                    
+                    // 累加：轉單成本價 (每 759 回聲 = 242 元)
+                    if (baseEcho % 759 === 0) {
+                        totalTransferPrice += (baseEcho / 759) * 242 * qty;
+                    } else {
+                        canAutoCalculate = false; // 如果有非 759 倍數的特殊品項，就無法自動算
+                    }
+
+                    // 累加：取消轉單時的原價
+                    if (retailPriceMap[baseEcho]) {
+                        totalRetailPrice += retailPriceMap[baseEcho] * qty;
+                    } else {
+                        canAutoCalculate = false;
+                    }
+                } else {
+                    canAutoCalculate = false;
+                }
+            }
+
+            // 4. 根據使用者的勾選狀態，執行對應的操作
             if (isTransfer) {
-                if (baseEcho > 0 && baseEcho % 759 === 0) {
-                    const newAmount = Math.floor((totalEchoes / 759) * 242);
-                    if (confirm(`【轉單計算確認】\n商品：${itemName}\n\n系統將自動把金額修改為：NT$ ${newAmount}\n確定要執行轉單嗎？`)) {
-                        updatePayload.final_amount = newAmount;
+                if (canAutoCalculate && totalTransferPrice > 0) {
+                    if (confirm(`【轉單計算確認】\n商品：${itemName}\n\n系統將自動計算所有組合並把金額修改為轉單成本：NT$ ${totalTransferPrice}\n確定要執行轉單嗎？`)) {
+                        updatePayload.final_amount = totalTransferPrice;
                     } else {
                         checkbox.checked = false;
                         return; 
                     }
                 } else {
-                    alert('⚠️ 無法自動辨識該品項的回聲數量，請手動修改實付金額。');
+                    alert('⚠️ 無法自動辨識組合內所有品項的轉單成本，請手動修改實付金額。');
                 }
             } else {
-                const standardPriceMap = {
-                    759: 265,
-                    1518: 530,
-                    2277: 780,
-                    3795: 1280,
-                    5313: 1785,
-                    6072: 2020,
-                    7590: 2475,
-                    15180: 4950,
-                    22770: 7400,
-                    30360: 9800
-                };
-
-                const revertedPrice = standardPriceMap[totalEchoes];
-
-                if (revertedPrice) {
-                    if (confirm(`【取消轉單】\n系統將自動把金額恢復為原價：NT$ ${revertedPrice}\n確定要執行嗎？`)) {
-                        updatePayload.final_amount = revertedPrice;
+                if (canAutoCalculate && totalRetailPrice > 0) {
+                    if (confirm(`【取消轉單】\n系統將自動把金額恢復為所有組合的總原價：NT$ ${totalRetailPrice}\n確定要執行嗎？`)) {
+                        updatePayload.final_amount = totalRetailPrice;
                     } else {
                         checkbox.checked = true;
                         return;
                     }
                 } else {
-                    if (!confirm(`【取消轉單】\n系統找不到 ${totalEchoes} 回聲的預設原價。\n取消後請您「手動」將實付金額改回原本的定價。確定要取消嗎？`)) {
+                    if (!confirm(`【取消轉單】\n系統找不到此組合商品對應的預設原價。\n取消後請您「手動」將實付金額改回原本的定價。確定要取消嗎？`)) {
                         checkbox.checked = true;
                         return; 
                     }
                 }
             }
 
+            // 5. 鎖定按鈕並更新資料庫
             checkbox.disabled = true;
             const { error } = await supabaseClient.from('orders').update(updatePayload).eq('id', orderId);
             
