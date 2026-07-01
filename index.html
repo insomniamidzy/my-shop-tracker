@@ -151,6 +151,14 @@
         </h4>
         <div class="dash-item"><span>759 點數：</span> <span class="dash-val" id="stat-759">0 單</span></div>
         <div class="dash-item"><span>60 點數 (贈品)：</span> <span class="dash-val" id="stat-60">0 單</span></div>
+        
+        <div style="border-top: 1px dotted #ccc; margin: 8px 0; padding-top: 8px;"></div>
+        <div class="dash-item"><span>特惠禮包 (956回聲)：</span> <span class="dash-val" id="stat-event-0" style="color: #d9383a;">0 組</span></div>
+        <div class="dash-item"><span>優惠禮包1 (1009回聲)：</span> <span class="dash-val" id="stat-event-1" style="color: #d9383a;">0 組</span></div>
+        <div class="dash-item"><span>優惠禮包2 (3448回聲)：</span> <span class="dash-val" id="stat-event-2" style="color: #d9383a;">0 組</span></div>
+        <div class="dash-item"><span>優惠禮包3 (6918回聲)：</span> <span class="dash-val" id="stat-event-3" style="color: #d9383a;">0 組</span></div>
+        <div style="border-top: 1px dotted #ccc; margin: 8px 0;"></div>
+
         <div class="dash-item"><span>✅ 已完成總量：</span> <span class="dash-val" id="stat-count" style="color: #1e7e34;">0 筆</span></div>
         <div class="dash-item" style="border-top: 1px dashed #ccc; padding-top: 8px;">
             <span>✨ 總花費點數：</span> <span class="dash-val points-text" id="stat-points">0 點</span>
@@ -218,9 +226,15 @@
 
             let count759 = 0;
             let count60 = 0;
-            let eventPoints = 0; // ✨ 新增：活動點數累計 (用來存 999 點)
+            let eventPoints = 0; 
             let totalCompletedCount = 0;
             let totalCompletedAmount = 0;
+
+            // ✨ 新增：用來計算四種禮包各自數量的變數
+            let countEvent0 = 0; // 特惠禮包
+            let countEvent1 = 0; // 優惠禮包1
+            let countEvent2 = 0; // 優惠禮包2
+            let countEvent3 = 0; // 優惠禮包3
 
             currentlyFilteredOrders = allOrdersData.filter(order => {
                 const currentStatus = order.status || 'pending';
@@ -252,8 +266,8 @@
 
                     const itemName = order.item_name || '';
                     
-                    // ✨ 升級：將組合商品拆解，完美計算每一個品項
-                    const items = itemName.split('+').map(i => i.trim());
+                    // ✨ 升級：將組合商品用「前後有空格的加號」安全拆解
+                    const items = itemName.split(' + ').map(i => i.trim());
                     
                     // ✨ 建立八週年活動專屬【點數】對照表
                     const eventPointsMap = {
@@ -275,6 +289,12 @@
                             // 🎯 精準對應：找到這款禮包專屬的點數成本
                             if (eventPointsMap[baseItemName]) {
                                 eventPoints += eventPointsMap[baseItemName] * qty;
+
+                                // ✨ 新增：判斷它是哪一種禮包，並把數量加上去
+                                if (baseItemName.includes('特惠禮包')) countEvent0 += qty;
+                                else if (baseItemName.includes('優惠禮包1')) countEvent1 += qty;
+                                else if (baseItemName.includes('優惠禮包2')) countEvent2 += qty;
+                                else if (baseItemName.includes('優惠禮包3')) countEvent3 += qty;
                             }
                         } else {
                             // 常規 759 體系計算
@@ -326,7 +346,6 @@
                     </select>
                 `;
 
-                // ✨ 核心修改：在玩家資訊下方，動態加入 FB 個人主頁點擊連結按鈕
                 const playerNameHtml = `
                     <div class="player-info">
                         <strong>🎮 ${order.nickname || '---'}</strong>
@@ -389,6 +408,13 @@
 
             document.getElementById('stat-759').innerText = count759 + ' 單位';
             document.getElementById('stat-60').innerText = count60 + ' 單位';
+            
+            // ✨ 將計算出來的各禮包數量顯示到畫面上
+            document.getElementById('stat-event-0').innerText = countEvent0 + ' 組';
+            document.getElementById('stat-event-1').innerText = countEvent1 + ' 組';
+            document.getElementById('stat-event-2').innerText = countEvent2 + ' 組';
+            document.getElementById('stat-event-3').innerText = countEvent3 + ' 組';
+
             document.getElementById('stat-count').innerText = totalCompletedCount + ' 筆';
             document.getElementById('stat-points').innerText = totalPoints.toLocaleString() + ' 點'; 
             document.getElementById('stat-amount').innerText = '$' + totalCompletedAmount.toLocaleString();
@@ -472,7 +498,7 @@
                 "八週年優惠禮包3 (6918回聲+15精華)": { transfer: 999, retail: 999 }
             };
 
-            const items = itemName.split('+').map(i => i.trim());
+            const items = itemName.split(' + ').map(i => i.trim());
             
             let totalTransferPrice = 0; 
             let totalRetailPrice = 0;   
