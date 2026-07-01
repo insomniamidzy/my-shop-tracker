@@ -218,6 +218,7 @@
 
             let count759 = 0;
             let count60 = 0;
+            let eventPoints = 0; // ✨ 新增：活動點數累計 (用來存 999 點)
             let totalCompletedCount = 0;
             let totalCompletedAmount = 0;
 
@@ -247,23 +248,32 @@
                 if (order.status === 'completed') {
                     totalCompletedCount++;
                     totalCompletedAmount += (parseInt(order.final_amount) || 0);
-                    
                     count60 += (parseInt(order.extra_gifts) || 0);
 
                     const itemName = order.item_name || '';
-                    const echoMatch = itemName.match(/(\d+)\s*回聲/);
-                    if (echoMatch) {
-                        const baseEcho = parseInt(echoMatch[1]);
-                        if (baseEcho % 759 === 0) {
-                            const baseUnits = baseEcho / 759; 
-                            let qty = 1; 
-                            const qtyMatch = itemName.match(/[xX*]\s*(\d+)/);
-                            if (qtyMatch) {
-                                qty = parseInt(qtyMatch[1]);
+                    
+                    // ✨ 升級：將組合商品拆解，完美計算每一個品項
+                    const items = itemName.split('+').map(i => i.trim());
+                    
+                    items.forEach(item => {
+                        // 抓取數量 (例如 x 2)
+                        const qtyMatch = item.match(/[xX*]\s*(\d+)/);
+                        const qty = qtyMatch ? parseInt(qtyMatch[1]) : 1;
+
+                        if (item.includes('八週年')) {
+                            // 🎯 攔截活動禮包：每一組暫定以 999 點計算成本
+                            eventPoints += 999 * qty; 
+                        } else {
+                            // 常規 759 體系計算
+                            const echoMatch = item.match(/(\d+)\s*回聲/);
+                            if (echoMatch) {
+                                const baseEcho = parseInt(echoMatch[1]);
+                                if (baseEcho % 759 === 0) {
+                                    count759 += (baseEcho / 759) * qty;
+                                }
                             }
-                            count759 += (baseUnits * qty);
                         }
-                    }
+                    });
                 }
 
                 let statusClass = 'status-info';
@@ -361,7 +371,8 @@
 
             document.getElementById('orders-table').style.display = 'table';
 
-            const totalPoints = (count759 * 1220) + (count60 * 120);
+            // ✨ 總點數公式更新：加入活動點數
+            const totalPoints = (count759 * 1220) + (count60 * 120) + eventPoints;
 
             document.getElementById('stat-759').innerText = count759 + ' 單位';
             document.getElementById('stat-60').innerText = count60 + ' 單位';
@@ -433,37 +444,41 @@
 
             let updatePayload = { is_transfer: isTransfer };
 
-            // 1. 定義單項原價表 (零售價)，用來做「取消轉單」時的恢復依據
             const retailPriceMap = {
                 759: 265, 1518: 530, 2277: 780, 3036: 1000, 3795: 1280,
                 5313: 1785, 6072: 2020, 7590: 2475, 15180: 4950,
                 22770: 7400, 30360: 9800
             };
 
-            // 2. 將組合商品拆解成陣列 (例如 ["2277 回聲 x 1", "1518 回聲 x 1"])
             const items = itemName.split('+').map(i => i.trim());
             
-            let totalTransferPrice = 0; // 計算轉單總成本
-            let totalRetailPrice = 0;   // 計算恢復原價總額
-            let canAutoCalculate = true; // 判斷是否能完美辨識所有品項
+            let totalTransferPrice = 0; 
+            let totalRetailPrice = 0;   
+            let canAutoCalculate = true; 
 
-            // 3. 迴圈遍歷每一個組合內的商品，進行加總
             for (const item of items) {
-                const echoMatch = item.match(/(\d+)\s*回聲/);
+                // 抓取數量
                 const qtyMatch = item.match(/[xX*]\s*(\d+)/);
-                
+                const qty = qtyMatch ? parseInt(qtyMatch[1]) : 1;
+
+                // ✨ 新增：專門處理「八週年」等特殊活動商品
+                if (item.includes('八週年')) {
+                    totalTransferPrice += 999 * qty; // 轉單成本暫定 999 元
+                    totalRetailPrice += 999 * qty;   // 取消轉單的原價也暫定 999 元
+                    continue; // 處理完畢，直接跳過後面的常規運算，換下一個商品
+                }
+
+                // 以下為常規 759 倍數商品的處理邏輯
+                const echoMatch = item.match(/(\d+)\s*回聲/);
                 if (echoMatch) {
                     const baseEcho = parseInt(echoMatch[1]);
-                    const qty = qtyMatch ? parseInt(qtyMatch[1]) : 1;
                     
-                    // 累加：轉單成本價 (每 759 回聲 = 242 元)
                     if (baseEcho % 759 === 0) {
                         totalTransferPrice += (baseEcho / 759) * 242 * qty;
                     } else {
-                        canAutoCalculate = false; // 如果有非 759 倍數的特殊品項，就無法自動算
+                        canAutoCalculate = false; 
                     }
 
-                    // 累加：取消轉單時的原價
                     if (retailPriceMap[baseEcho]) {
                         totalRetailPrice += retailPriceMap[baseEcho] * qty;
                     } else {
