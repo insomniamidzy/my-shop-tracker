@@ -271,10 +271,11 @@
                     
                     // ✨ 建立八週年活動專屬【點數】對照表
                     const eventPointsMap = {
-                        "八週年特惠禮包 (956回聲+5精華)": 999,
-                        "八週年優惠禮包1 (1009回聲+3精華)": 999,
-                        "八週年優惠禮包2 (3448回聲+7精華)": 999,
-                        "八週年優惠禮包3 (6918回聲+15精華)": 999
+                        "八週年特惠禮包 (956回聲+5精華)": 1220,
+                        "八週年優惠禮包1 (1009回聲+3精華)": 1840,
+                        "八週年優惠禮包2 (3448回聲+7精華)": 6100,
+                        "八週年優惠禮包3 (6918回聲+15精華)": 12000,
+                        "八週年禮包大全套 (四款全包)": 21160
                     };
                     
                     items.forEach(item => {
@@ -295,6 +296,12 @@
                                 else if (baseItemName.includes('優惠禮包1')) countEvent1 += qty;
                                 else if (baseItemName.includes('優惠禮包2')) countEvent2 += qty;
                                 else if (baseItemName.includes('優惠禮包3')) countEvent3 += qty;
+                                else if (baseItemName.includes('大全套')) {
+                                    countEvent0 += qty;
+                                    countEvent1 += qty;
+                                    countEvent2 += qty;
+                                    countEvent3 += qty;
+                                }
                             }
                         } else {
                             // 常規 759 體系計算
@@ -495,7 +502,8 @@
                 "八週年特惠禮包 (956回聲+5精華)": { transfer: 999, retail: 999 },
                 "八週年優惠禮包1 (1009回聲+3精華)": { transfer: 999, retail: 999 },
                 "八週年優惠禮包2 (3448回聲+7精華)": { transfer: 999, retail: 999 },
-                "八週年優惠禮包3 (6918回聲+15精華)": { transfer: 999, retail: 999 }
+                "八週年優惠禮包3 (6918回聲+15精華)": { transfer: 999, retail: 999 },
+                "八週年禮包大全套 (四款全包)": { transfer: 4197, retail: 4395 }
             };
 
             const items = itemName.split(' + ').map(i => i.trim());
