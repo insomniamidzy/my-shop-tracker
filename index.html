@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>代充訂單即時對帳監控（含智能匯出功能版）</title>
+    <title>代充訂單即時對帳監控（動態擴充版）</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; background: #f5f5f7; }
@@ -31,8 +31,9 @@
         .status-warning { background: #fff3cd; color: #856404; }
         .status-info { background: #e8f4fd; color: #0071e3; }
         .status-gift { background: #fdf3e8; color: #e37e00; } 
-        .status-server { background: #e8ecef; color: #495057; border: 1px solid #dee2e6; }
+        .status-server { background: #e8ecef; color: #495057; border: 1px solid #dee2e6; margin-bottom: 4px; }
         .status-locked { background: #e2e3e5; color: #383d41; }
+        .game-badge { background: #fce4ec; color: #c2185b; }
         
         .amount-input { width: 70px; padding: 4px 6px; border: 1px solid transparent; border-radius: 4px; font-size: 14px; font-weight: 700; color: #d9383a; background: transparent; transition: 0.2s; outline: none; }
         .amount-input:hover { border-color: #ddd; background: #fff; }
@@ -59,7 +60,6 @@
         .player-info { display: flex; flex-direction: column; gap: 4px; }
         .line-name { font-size: 12px; color: #888; background: #f0f0f0; padding: 2px 6px; border-radius: 4px; display: inline-block; width: fit-content; }
         
-        /* ✨ 新增：FB 連結專用小按鈕美化樣式 */
         .fb-link { font-size: 11px; color: #0071e3; text-decoration: none; background: #e8f4fd; padding: 2px 6px; border-radius: 4px; display: inline-block; width: fit-content; border: 1px solid #b6dbfa; transition: 0.2s; margin-top: 2px; text-align: center; }
         .fb-link:hover { background: #cfe8fc; }
 
@@ -84,6 +84,8 @@
         .dash-val { font-weight: 700; color: #0071e3; }
         .dash-total { margin-top: 12px; padding-top: 10px; border-top: 1px dashed #ccc; font-size: 16px; font-weight: 800; color: #d9383a; display: flex; justify-content: space-between; }
         .points-text { color: #8e44ad; font-weight: 800; }
+        
+        .dynamic-info-container { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
     </style>
 </head>
 <body>
@@ -93,7 +95,7 @@
             <h2>📋 代充訂單即時對帳單</h2>
             
             <div class="tools-zone">
-                <input type="text" id="search-input" class="search-input" placeholder="🔍 搜尋訂單號 / UID / 遊戲暱稱..." oninput="renderOrders()">
+                <input type="text" id="search-input" class="search-input" placeholder="🔍 搜尋單號 / 帳號資訊 / 暱稱..." oninput="renderOrders()">
                 <input type="date" id="date-filter" class="user-select" title="選擇單日結算" onchange="renderOrders()">
 
                 <select id="status-filter" class="user-select" onchange="renderOrders()">
@@ -125,8 +127,8 @@
                 <tr>
                     <th>訂單編號</th>
                     <th>轉單</th>
-                    <th>伺服器</th> 
-                    <th>UID</th>
+                    <th>遊戲項目</th> 
+                    <th>帳號詳細資訊</th>
                     <th>玩家 / LINE 暱稱</th>
                     <th>購買品項</th>
                     <th>贈品數 (60)</th>
@@ -187,6 +189,22 @@
         let allOrdersData = [];
         let currentlyFilteredOrders = []; 
 
+        const gameNameMap = {
+            'identity-v': '第五人格',
+            'valorant': '特戰英豪',
+            'roblox': 'Roblox',
+            'speed-drivers': '極速領域'
+        };
+
+        const infoKeyMap = {
+            'uid': 'UID',
+            'server': '伺服器',
+            'riot_id': 'Riot ID',
+            'tagline': '標籤',
+            'account': '登入帳號',
+            'password': '密碼'
+        };
+
         function getCurrentOperator() {
             return document.getElementById('operator-select').value;
         }
@@ -200,8 +218,7 @@
 
             const { data, error } = await supabaseClient
                 .from('orders')
-                // ✨ 核心修改：在 select 欄位最後加上 fb_link 數據提取
-                .select('id, order_no, uid, nickname, server_str, realname_status, item_name, final_amount, payment_method, extra_gifts, is_locked, operator, status, line_name, completed_at, created_at, is_transfer, fb_link')
+                .select('id, order_no, game_id, account_info, department, uid, nickname, server_str, realname_status, item_name, final_amount, payment_method, extra_gifts, is_locked, operator, status, line_name, completed_at, created_at, is_transfer, fb_link')
                 .order('id', { ascending: false });
 
             document.getElementById('loading').style.display = 'none';
@@ -230,16 +247,22 @@
             let totalCompletedCount = 0;
             let totalCompletedAmount = 0;
 
-            // ✨ 新增：用來計算四種禮包各自數量的變數
-            let countEvent0 = 0; // 特惠禮包
-            let countEvent1 = 0; // 優惠禮包1
-            let countEvent2 = 0; // 優惠禮包2
-            let countEvent3 = 0; // 優惠禮包3
+            let countEvent0 = 0;
+            let countEvent1 = 0;
+            let countEvent2 = 0;
+            let countEvent3 = 0;
 
             currentlyFilteredOrders = allOrdersData.filter(order => {
                 const currentStatus = order.status || 'pending';
                 const matchStatus = (statusFilter === 'all') || (currentStatus === statusFilter);
-                const searchString = `${order.order_no} ${order.uid} ${order.nickname} ${order.line_name}`.toLowerCase();
+                
+                let infoSearchStr = '';
+                if (order.account_info) {
+                    const infoObj = typeof order.account_info === 'string' ? JSON.parse(order.account_info) : order.account_info;
+                    infoSearchStr = Object.values(infoObj).join(' ');
+                }
+
+                const searchString = `${order.order_no} ${order.uid} ${order.nickname} ${order.line_name} ${infoSearchStr} ${order.game_id}`.toLowerCase();
                 const matchSearch = searchString.includes(searchTerm);
                 
                 let matchDate = true;
@@ -265,11 +288,8 @@
                     count60 += (parseInt(order.extra_gifts) || 0);
 
                     const itemName = order.item_name || '';
-                    
-                    // ✨ 升級：將組合商品用「前後有空格的加號」安全拆解
                     const items = itemName.split(' + ').map(i => i.trim());
                     
-                    // ✨ 建立八週年活動專屬【點數】對照表
                     const eventPointsMap = {
                         "八週年特惠禮包 (956回聲+5精華)": 1220,
                         "八週年優惠禮包1 (1009回聲+3精華)": 1840,
@@ -279,19 +299,14 @@
                     };
                     
                     items.forEach(item => {
-                        // 抓取數量 (例如 x 2)
                         const qtyMatch = item.match(/[xX*]\s*(\d+)/);
                         const qty = qtyMatch ? parseInt(qtyMatch[1]) : 1;
-
-                        // 💡 將字串後面的 " x 2" 拔掉，還原成乾淨的商品名稱來對比
                         const baseItemName = item.replace(/\s*[xX*]\s*\d+$/, '').trim();
 
                         if (baseItemName.includes('八週年')) {
-                            // 🎯 精準對應：找到這款禮包專屬的點數成本
                             if (eventPointsMap[baseItemName]) {
                                 eventPoints += eventPointsMap[baseItemName] * qty;
 
-                                // ✨ 新增：判斷它是哪一種禮包，並把數量加上去
                                 if (baseItemName.includes('特惠禮包')) countEvent0 += qty;
                                 else if (baseItemName.includes('優惠禮包1')) countEvent1 += qty;
                                 else if (baseItemName.includes('優惠禮包2')) countEvent2 += qty;
@@ -304,7 +319,6 @@
                                 }
                             }
                         } else {
-                            // 常規 759 體系計算
                             const echoMatch = item.match(/(\d+)\s*回聲/);
                             if (echoMatch) {
                                 const baseEcho = parseInt(echoMatch[1]);
@@ -369,13 +383,6 @@
                     completedAtHtml = `<div class="time-text"><span class="time-date">${monthDay}</span><br>${time}</div>`;
                 }
 
-                const finalActionHtml = `
-                    <div style="display: flex; flex-direction: column; gap: 6px;">
-                        ${actionBtnHtml}
-                        <button class="btn-copy" onclick="copyOrderInfo(${order.id}, this)">📋 複製明細</button>
-                    </div>
-                `;
-
                 const isTransferChecked = order.is_transfer ? 'checked' : '';
                 const transferHtml = `
                     <div style="text-align: center;">
@@ -385,11 +392,45 @@
                     </div>
                 `;
 
+                const displayGameName = gameNameMap[order.game_id] || order.game_id || '第五人格(舊單)';
+                
+                let dynamicInfoHtml = '<div class="dynamic-info-container">';
+                let copyTextArr = [];
+                
+                if (order.account_info) {
+                    let infoObj = {};
+                    try { infoObj = typeof order.account_info === 'string' ? JSON.parse(order.account_info) : order.account_info; } 
+                    catch(e) { console.error("JSON 解析錯誤", e); }
+                    
+                    for (const [key, val] of Object.entries(infoObj)) {
+                        const displayKey = infoKeyMap[key] || key;
+                        dynamicInfoHtml += `<span class="status-badge status-server">${displayKey}: <code>${val}</code></span>`;
+                        copyTextArr.push(`𓊆ྀི ${displayKey}𓊇ྀི：${val}`);
+                    }
+                } else {
+                    if (order.server_str) {
+                        dynamicInfoHtml += `<span class="status-badge status-server">伺服器: <code>${order.server_str}</code></span>`;
+                        copyTextArr.push(`𓊆ྀི 伺服器𓊇ྀི：${order.server_str}`);
+                    }
+                    if (order.uid) {
+                        dynamicInfoHtml += `<span class="status-badge status-server">UID: <code>${order.uid}</code></span>`;
+                        copyTextArr.push(`𓊆ྀི UID𓊇ྀི：${order.uid}`);
+                    }
+                }
+                dynamicInfoHtml += '</div>';
+
+                const finalActionHtml = `
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                        ${actionBtnHtml}
+                        <button class="btn-copy" onclick='copyOrderInfo(${order.id}, this, ${JSON.stringify(copyTextArr)}, "${displayGameName}")'>📋 複製明細</button>
+                    </div>
+                `;
+
                 tr.innerHTML = `
                     <td><strong>${order.order_no || '---'}</strong></td>
                     <td>${transferHtml}</td>
-                    <td><span class="status-badge status-server">${order.server_str || '亞洲服'}</span></td> 
-                    <td><code>${order.uid || '---'}</code></td>
+                    <td><span class="status-badge game-badge">${displayGameName}</span></td> 
+                    <td>${dynamicInfoHtml}</td>
                     <td>${playerNameHtml}</td> 
                     <td>${order.item_name || '---'}</td>
                     <td><span class="status-badge status-gift">🎁 +${order.extra_gifts || 0}</span></td>
@@ -410,13 +451,11 @@
 
             document.getElementById('orders-table').style.display = 'table';
 
-            // ✨ 總點數公式更新：加入活動點數
             const totalPoints = (count759 * 1220) + (count60 * 120) + eventPoints;
 
             document.getElementById('stat-759').innerText = count759 + ' 單位';
             document.getElementById('stat-60').innerText = count60 + ' 單位';
             
-            // ✨ 將計算出來的各禮包數量顯示到畫面上
             document.getElementById('stat-event-0').innerText = countEvent0 + ' 組';
             document.getElementById('stat-event-1').innerText = countEvent1 + ' 組';
             document.getElementById('stat-event-2').innerText = countEvent2 + ' 組';
@@ -430,33 +469,65 @@
             document.getElementById('stats-dashboard').style.display = 'block';
         }
 
-        // ✨ 核心修改：資料智慧匯出試算表邏輯，增加「FB連結」欄位
+        function copyOrderInfo(orderId, btnElement, dynamicDataArr, gameName) {
+            const order = allOrdersData.find(o => o.id === orderId);
+            if (!order) return;
+
+            const dynamicText = dynamicDataArr.join('\n');
+
+            const textToCopy = `𓊆ྀི 遊戲名稱𓊇ྀི：${gameName}
+${dynamicText}
+𓊆ྀི 遊戲暱稱𓊇ྀི：${order.nickname || ''}
+𓊆ྀི 購買商品𓊇ྀི：${order.item_name || ''}
+𓊆ྀི IG/LINE名稱𓊇ྀི：${order.line_name || ''}
+𓊆ྀི FB個人主頁𓊇ྀི：${order.fb_link || '未提供'}
+𓊆ྀི 付款金額𓊇ྀི：${order.final_amount || 0}`;
+
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                const originalText = btnElement.innerText;
+                btnElement.innerText = '✅ 已複製';
+                btnElement.style.background = '#28a745';
+                
+                setTimeout(() => {
+                    btnElement.innerText = originalText;
+                    btnElement.style.background = '#17a2b8';
+                }, 2000);
+            }).catch(err => {
+                alert('複製失敗，請檢查瀏覽器權限。');
+                console.error('複製失敗:', err);
+            });
+        }
+
         function exportToCSV() {
             if (currentlyFilteredOrders.length === 0) {
                 alert("⚠️ 目前畫面中沒有任何資料可供匯出！");
                 return;
             }
 
-            // 1. 定義 CSV 試算表的欄位標頭，加入 FB連結 欄位
-            const headers = ["訂單編號", "是否轉單", "伺服器", "UID", "玩家暱稱", "LINE/IG名稱", "FB連結", "購買品項", "超商加贈(60組數)", "實付金額", "付款方式", "實名狀態", "訂單狀態", "完成/建立時間"];
-            
+            const headers = ["訂單編號", "是否轉單", "遊戲項目", "帳號詳細資訊", "玩家暱稱", "LINE/IG名稱", "FB連結", "購買品項", "實付金額", "訂單狀態", "完成/建立時間"];
             const statusMap = { 'pending': '未付款', 'paid': '已付款', 'completed': '已完成', 'contacting': '找人中', 'cancelled': '已取消' };
 
-            // 2. 迭代組裝資料內容
             const rows = currentlyFilteredOrders.map(order => {
+                const displayGameName = gameNameMap[order.game_id] || order.game_id || '第五人格';
+                
+                let infoStr = "";
+                if (order.account_info) {
+                    const infoObj = typeof order.account_info === 'string' ? JSON.parse(order.account_info) : order.account_info;
+                    infoStr = Object.entries(infoObj).map(([k, v]) => `${infoKeyMap[k] || k}:${v}`).join(' | ');
+                } else {
+                    infoStr = `UID:${order.uid} | 伺服器:${order.server_str}`;
+                }
+
                 return [
                     `\t${order.order_no || '---'}`, 
                     order.is_transfer ? "是" : "否",
-                    order.server_str || "亞洲服",
-                    `\t${order.uid || '---'}`,      
+                    displayGameName,
+                    infoStr,      
                     order.nickname || "---",
                     order.line_name || "未綁定",
-                    order.fb_link || "未提供", // ✨ 注入 FB 連結資料到試算表
+                    order.fb_link || "未提供",
                     order.item_name || "---",
-                    order.extra_gifts || 0,
                     order.final_amount || 0,
-                    order.payment_method || "---",
-                    order.realname_status || "待處理",
                     statusMap[order.status] || order.status || "未付款",
                     order.completed_at || order.created_at || "---"
                 ];
@@ -490,14 +561,12 @@
 
             let updatePayload = { is_transfer: isTransfer };
 
-            // 1. 定義單項原價表 (常規)
             const retailPriceMap = {
                 759: 265, 1518: 530, 2277: 780, 3036: 1000, 3795: 1280,
                 5313: 1785, 6072: 2020, 7590: 2475, 15180: 4950,
                 22770: 7400, 30360: 9800
             };
 
-            // ✨ 2. 建立八週年活動專屬【台幣價格】對照表
             const eventPriceMap = {
                 "八週年特惠禮包 (956回聲+5精華)": { transfer: 245, retail: 260 },
                 "八週年優惠禮包1 (1009回聲+3精華)": { transfer: 400, retail: 430 },
@@ -517,7 +586,6 @@
                 const qty = qtyMatch ? parseInt(qtyMatch[1]) : 1;
                 const baseItemName = item.replace(/\s*[xX*]\s*\d+$/, '').trim();
 
-                // ✨ 專門處理「八週年」等特殊活動商品
                 if (baseItemName.includes('八週年')) {
                     if (eventPriceMap[baseItemName]) {
                         totalTransferPrice += eventPriceMap[baseItemName].transfer * qty; 
@@ -528,7 +596,6 @@
                     continue; 
                 }
 
-                // 以下為常規 759 倍數商品的處理邏輯
                 const echoMatch = item.match(/(\d+)\s*回聲/);
                 if (echoMatch) {
                     const baseEcho = parseInt(echoMatch[1]);
@@ -549,7 +616,6 @@
                 }
             }
 
-            // 4. 根據使用者的勾選狀態，執行對應的操作
             if (isTransfer) {
                 if (canAutoCalculate && totalTransferPrice > 0) {
                     if (confirm(`【轉單計算確認】\n商品：${itemName}\n\n系統將自動計算所有組合並把金額修改為轉單成本：NT$ ${totalTransferPrice}\n確定要執行轉單嗎？`)) {
@@ -577,7 +643,6 @@
                 }
             }
 
-            // 5. 鎖定按鈕並更新資料庫
             checkbox.disabled = true;
             const { error } = await supabaseClient.from('orders').update(updatePayload).eq('id', orderId);
             
@@ -588,36 +653,6 @@
             
             checkbox.disabled = false;
             fetchOrders(); 
-        }
-
-        // ✨ 核心修改：在複製一鍵明細範本中，增設 FB個人主頁 欄位
-        function copyOrderInfo(orderId, btnElement) {
-            const order = allOrdersData.find(o => o.id === orderId);
-            if (!order) return;
-
-            const textToCopy = `𓊆ྀི 伺服器𓊇ྀི：${order.server_str || '亞洲服'}
-𓊆ྀི 遊戲暱稱𓊇ྀི：${order.nickname || ''}
-𓊆ྀི UID𓊇ྀི：${order.uid || ''}
-𓊆ྀི 遊戲名稱𓊇ྀི：第五人格
-𓊆ྀི 購買商品𓊇ྀི：${order.item_name || ''}
-𓊆ྀི 贈品數量𓊇ྀི：${order.extra_gifts || 0}
-𓊆ྀི IG/LINE名稱𓊇ྀི：${order.line_name || ''}
-𓊆ྀི FB個人主頁𓊇ྀི：${order.fb_link || '未提供'}
-𓊆ྀི 付款金額𓊇ྀི：${order.final_amount || 0}`;
-
-            navigator.clipboard.writeText(textToCopy).then(() => {
-                const originalText = btnElement.innerText;
-                btnElement.innerText = '✅ 已複製';
-                btnElement.style.background = '#28a745';
-                
-                setTimeout(() => {
-                    btnElement.innerText = originalText;
-                    btnElement.style.background = '#17a2b8';
-                }, 2000);
-            }).catch(err => {
-                alert('複製失敗，請檢查瀏覽器權限。');
-                console.error('複製失敗:', err);
-            });
         }
 
         async function updateFinalAmount(inputElement) {
