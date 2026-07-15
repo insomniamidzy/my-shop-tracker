@@ -248,6 +248,7 @@
             const { data, error } = await supabaseClient
                 .from('orders')
                 .select('id, order_no, game_id, account_info, department, uid, nickname, server_str, realname_status, item_name, final_amount, payment_method, extra_gifts, is_locked, operator, status, line_name, completed_at, created_at, is_transfer, fb_link')
+                .or('game_id.eq.identity-v,game_id.is.null') // 🎯 關鍵：只抓第五人格的單，與以前未分類的舊單！
                 .order('id', { ascending: false });
 
             document.getElementById('loading').style.display = 'none';
@@ -282,6 +283,10 @@
             let countEvent3 = 0;
 
             currentlyFilteredOrders = allOrdersData.filter(order => {
+                // ✨ 雙重防呆：確保畫面只顯示第五人格或舊單
+                const isIdv = order.game_id === 'identity-v' || !order.game_id || order.game_id === '';
+                if (!isIdv) return false; // 如果不是第五人格，直接踢除不顯示
+
                 const currentStatus = order.status || 'pending';
                 const matchStatus = (statusFilter === 'all') || (currentStatus === statusFilter);
                 
