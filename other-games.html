@@ -113,25 +113,82 @@
     </div>
 
     <script>
-        // 頁籤切換核心邏輯
-        function switchTab(gameId) {
-            // 1. 移除所有按鈕的 active 狀態
-            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-            // 2. 移除所有內容區塊的 active 狀態
-            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-
-            // 3. 把點擊的按鈕設為 active (利用 event.target 抓取觸發的按鈕)
-            event.target.classList.add('active');
-            
-            // 4. 顯示對應的內容區塊
-            const targetContent = document.getElementById(`tab-${gameId}`);
-            if (targetContent) {
-                targetContent.classList.add('active');
+        // 初始化 Supabase (請填入你的 URL 與 KEY)
+        const SUPABASE_URL = 'https://sizlxeoconbuxkyrtnqd.supabase.co';
+        const SUPABASE_ANON_KEY = '你的_SUPABASE_KEY';
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        // 抓取特戰英豪訂單
+        async function fetchValorantOrders() {
+            const { data, error } = await supabaseClient
+                .from('orders')
+                .select('*')
+                .eq('game_id', 'valorant') // 🎯 關鍵：只抓特戰英豪的單！
+                .order('id', { ascending: false });
+        
+            if (error) {
+                console.error('特戰英豪訂單讀取失敗:', error);
+                return;
             }
-
-            // 💡 未來擴充：當切換頁籤時，可以在這裡觸發重新抓取該遊戲的 Supabase 資料
-            // fetchGameOrders(gameId);
+        
+            renderValorantOrders(data);
         }
+        
+        // 渲染特戰英豪表格
+        function renderValorantOrders(orders) {
+            const tbody = document.getElementById('tbody-valorant');
+            tbody.innerHTML = '';
+        
+            orders.forEach(order => {
+                // 1. 解析專屬的 account_info JSON
+                let riotId = '---';
+                let tagline = '---';
+                if (order.account_info) {
+                    try {
+                        const info = JSON.parse(order.account_info);
+                        riotId = info.riot_id || '---';
+                        tagline = info.tagline || '---';
+                    } catch (e) {
+                        console.error("JSON 解析失敗", e);
+                    }
+                }
+        
+                // 2. 建立表格列 (HTML 對應我們設定好的 6 個表頭)
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><strong>${order.order_no}</strong></td>
+                    <td><code style="color: #0071e3; background: #e8f4fd; padding: 4px; border-radius: 4px;">${riotId}</code></td>
+                    <td><code style="color: #d9383a; background: #fdf3e8; padding: 4px; border-radius: 4px;">#${tagline}</code></td>
+                    <td>${order.item_name}</td>
+                    <td style="color: #d9383a; font-weight: bold;">$ ${order.final_amount}</td>
+                    <td>
+                        <!-- 簡易的狀態顯示，你可以沿用第五人格的下拉選單寫法 -->
+                        <span style="background: #eee; padding: 4px 8px; border-radius: 4px; font-size: 12px;">${order.status}</span>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+        
+        // 當點擊特戰英豪頁籤時，觸發抓取資料
+        function switchTab(gameId) {
+            
+            // ... 原本的切換 UI 邏輯 ...
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            event.target.classList.add('active');
+            document.getElementById(`tab-${gameId}`).classList.add('active');
+        
+            // 觸發對應的 API 抓取
+            if (gameId === 'valorant') {
+                fetchValorantOrders();
+            }
+        }
+        
+        // 網頁載入時預設抓取一次
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchValorantOrders();
+        });
     </script>
 </body>
 </html>
