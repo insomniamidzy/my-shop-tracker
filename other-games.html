@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>其他遊戲對帳監控</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; background: #f5f5f7; margin: 0; }
+        .container { max-width: 1600px; margin: 0 auto; }
+        
+        /* 頂部導覽列 (與首頁共用設計) */
+        .main-nav { display: flex; gap: 15px; margin-bottom: 25px; border-bottom: 2px solid #eee; padding-bottom: 15px; }
+        .nav-btn { text-decoration: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; color: #666; background: #e8ecef; transition: 0.3s; }
+        .nav-btn:hover { background: #d1d5db; }
+        .nav-btn.active { background: #002D62; color: white; box-shadow: 0 4px 10px rgba(0, 45, 98, 0.2); }
+
+        h2 { color: #333; margin-bottom: 20px; }
+
+        /* 頁籤系統樣式 */
+        .tabs-container { display: flex; gap: 10px; margin-bottom: 20px; }
+        .tab-btn {
+            padding: 10px 24px;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: bold;
+            color: #555;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .tab-btn:hover { background: #f8f9fa; border-color: #bbb; }
+        .tab-btn.active { background: #d9383a; color: white; border-color: #d9383a; box-shadow: 0 4px 10px rgba(217, 56, 58, 0.2); }
+
+        /* 頁籤內容區塊 */
+        .tab-content {
+            display: none; /* 預設全部隱藏 */
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            min-height: 400px;
+        }
+        .tab-content.active {
+            display: block; /* 加上 active 的才會顯示 */
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* 簡易表格樣式 (示意用) */
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; font-size: 14px; }
+        th { background-color: #f9f9fb; color: #666; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="main-nav">
+            <a href="index.html" class="nav-btn">➔ 回到 第五人格對帳單</a>
+            <a href="other-games.html" class="nav-btn active">其他遊戲對帳單</a>
+        </div>
+
+        <h2>🎮 其他遊戲訂單管理</h2>
+
+        <div class="tabs-container">
+            <button class="tab-btn active" onclick="switchTab('valorant')">特戰英豪</button>
+            <button class="tab-btn" onclick="switchTab('roblox')">Roblox</button>
+            <button class="tab-btn" onclick="switchTab('speed-drivers')">極速領域</button>
+        </div>
+
+        <div id="tab-valorant" class="tab-content active">
+            <h3>特戰英豪 - 訂單列表</h3>
+            <p style="color: #666; font-size: 14px;">此區塊將專門計算 Riot ID 與特務幣的結算邏輯。</p>
+            <table>
+                <thead>
+                    <tr><th>訂單號</th><th>Riot ID</th><th>標籤</th><th>購買商品</th><th>實付金額</th><th>狀態</th></tr>
+                </thead>
+                <tbody id="tbody-valorant">
+                    <tr><td colspan="6" style="text-align: center; color: #999;">尚未載入資料...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div id="tab-roblox" class="tab-content">
+            <h3>Roblox - 訂單列表</h3>
+            <p style="color: #666; font-size: 14px;">此區塊將專門處理 Roblox 帳號密碼與 Robux 的結算邏輯。</p>
+            <table>
+                <thead>
+                    <tr><th>訂單號</th><th>Roblox 帳號</th><th>密碼</th><th>購買商品</th><th>實付金額</th><th>狀態</th></tr>
+                </thead>
+                <tbody id="tbody-roblox">
+                    <tr><td colspan="6" style="text-align: center; color: #999;">尚未載入資料...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div id="tab-speed-drivers" class="tab-content">
+            <h3>極速領域 - 訂單列表</h3>
+            <p style="color: #666; font-size: 14px;">此區塊將專門處理極速領域的結算邏輯。</p>
+            <table>
+                <thead>
+                    <tr><th>訂單號</th><th>登入方式</th><th>帳號/密碼</th><th>購買商品</th><th>實付金額</th><th>狀態</th></tr>
+                </thead>
+                <tbody id="tbody-speed">
+                    <tr><td colspan="6" style="text-align: center; color: #999;">尚未載入資料...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+
+    <script>
+        // 頁籤切換核心邏輯
+        function switchTab(gameId) {
+            // 1. 移除所有按鈕的 active 狀態
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            // 2. 移除所有內容區塊的 active 狀態
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+            // 3. 把點擊的按鈕設為 active (利用 event.target 抓取觸發的按鈕)
+            event.target.classList.add('active');
+            
+            // 4. 顯示對應的內容區塊
+            const targetContent = document.getElementById(`tab-${gameId}`);
+            if (targetContent) {
+                targetContent.classList.add('active');
+            }
+
+            // 💡 未來擴充：當切換頁籤時，可以在這裡觸發重新抓取該遊戲的 Supabase 資料
+            // fetchGameOrders(gameId);
+        }
+    </script>
+</body>
+</html>
