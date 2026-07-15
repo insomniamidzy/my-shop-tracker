@@ -504,7 +504,8 @@ ${dynamicText}
                 return;
             }
 
-            const headers = ["訂單編號", "是否轉單", "遊戲項目", "帳號詳細資訊", "玩家暱稱", "LINE/IG名稱", "FB連結", "購買品項", "實付金額", "訂單狀態", "完成/建立時間"];
+            // ✨ 1. 在表頭陣列補上「贈品數 (60)」
+            const headers = ["訂單編號", "是否轉單", "遊戲項目", "帳號詳細資訊", "玩家暱稱", "LINE/IG名稱", "FB連結", "購買品項", "贈品數 (60)", "實付金額", "訂單狀態", "完成/建立時間"];
             const statusMap = { 'pending': '未付款', 'paid': '已付款', 'completed': '已完成', 'contacting': '找人中', 'cancelled': '已取消' };
 
             const rows = currentlyFilteredOrders.map(order => {
@@ -527,6 +528,7 @@ ${dynamicText}
                     order.line_name || "未綁定",
                     order.fb_link || "未提供",
                     order.item_name || "---",
+                    order.extra_gifts || 0, // ✨ 2. 在資料對應處補上 extra_gifts 變數
                     order.final_amount || 0,
                     statusMap[order.status] || order.status || "未付款",
                     order.completed_at || order.created_at || "---"
@@ -553,7 +555,6 @@ ${dynamicText}
                 document.body.removeChild(link);
             }
         }
-
         async function handleTransferToggle(checkbox) {
             const orderId = checkbox.getAttribute('data-id');
             const itemName = checkbox.getAttribute('data-item') || '';
