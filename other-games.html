@@ -136,14 +136,6 @@
             return date.toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
         }
 
-        const statusMap = {
-            'pending': '未付款',
-            'paid': '已付款',
-            'processing': '處理中',
-            'completed': '已完成',
-            'cancelled': '已取消'
-        };
-
         // 抓取特戰英豪訂單
         async function fetchValorantOrders() {
             const { data, error } = await supabaseClient
@@ -196,11 +188,11 @@
                     <td>${paymentMethod}</td>
                     <td>
                         <select class="status-select ${currentStatus}" onchange="updateOrderStatus('${order.id}', this.value, this)">
-                            <option value="未付款" ${currentStatus === '未付款' ? 'selected' : ''}>未付款</option>
-                            <option value="已付款" ${currentStatus === '已付款' ? 'selected' : ''}>已付款</option>
-                            <option value="處理中" ${currentStatus === '處理中' ? 'selected' : ''}>處理中</option>
-                            <option value="已完成" ${currentStatus === '已完成' ? 'selected' : ''}>已完成</option>
-                            <option value="已取消" ${currentStatus === '已取消' ? 'selected' : ''}>已取消</option>
+                            <option value="pending" ${currentStatus === 'pending' ? 'selected' : ''}>未付款</option>
+                            <option value="paid" ${currentStatus === 'paid' ? 'selected' : ''}>已付款</option>
+                            <option value="processing" ${currentStatus === 'processing' ? 'selected' : ''}>處理中</option>
+                            <option value="completed" ${currentStatus === 'completed' ? 'selected' : ''}>已完成</option>
+                            <option value="cancelled" ${currentStatus === 'cancelled' ? 'selected' : ''}>已取消</option>
                         </select>
                     </td>
                     <td id="completed-time-${order.id}">${completedTime}</td>
