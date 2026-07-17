@@ -456,7 +456,7 @@
                 const finalActionHtml = `
                     <div style="display: flex; flex-direction: column; gap: 6px;">
                         ${actionBtnHtml}
-                        <button class="btn-copy" onclick='copyOrderInfo(${order.id}, this, ${JSON.stringify(copyTextArr)}, "${displayGameName}")'>📋 複製明細</button>
+                        <button class="btn-copy" onclick="copyOrderInfo(${order.id}, this, '${displayGameName}')">📋 複製明細</button>
                     </div>
                 `;
 
@@ -503,20 +503,41 @@
             document.getElementById('stats-dashboard').style.display = 'block';
         }
 
-        function copyOrderInfo(orderId, btnElement, dynamicDataArr, gameName) {
+        function copyOrderInfo(orderId, btnElement, gameName) {
+            // 1. 根據 ID 找到對應的訂單資料
             const order = allOrdersData.find(o => o.id === orderId);
             if (!order) return;
-
-            const dynamicText = dynamicDataArr.join('\n');
-
+        
+            // 2. 重新組合動態帳號資訊
+            let dynamicText = '';
+            if (order.account_info) {
+                let infoObj = {};
+                try { 
+                    infoObj = typeof order.account_info === 'string' ? JSON.parse(order.account_info) : order.account_info; 
+                } catch(e) {
+                    console.error("JSON 解析錯誤", e);
+                }
+                
+                dynamicText = Object.entries(infoObj)
+                    .map(([key, val]) => `𓊆ྀི ${infoKeyMap[key] || key}𓊇ྀི：${val}`)
+                    .join('\n');
+            } else {
+                const arr = [];
+                if (order.server_str) arr.push(`𓊆ྀི 伺服器𓊇ྀི：${order.server_str}`);
+                if (order.uid) arr.push(`𓊆ྀི UID𓊇ྀི：${order.uid}`);
+                dynamicText = arr.join('\n');
+            }
+        
+            // 3. 組合最終要複製的文字
             const textToCopy = `𓊆ྀི 遊戲名稱𓊇ྀི：${gameName}
-${dynamicText}
-𓊆ྀི 遊戲暱稱𓊇ྀི：${order.nickname || ''}
-𓊆ྀི 購買商品𓊇ྀི：${order.item_name || ''}
-𓊆ྀི IG/LINE名稱𓊇ྀི：${order.line_name || ''}
-𓊆ྀི FB個人主頁𓊇ྀི：${order.fb_link || '未提供'}
-𓊆ྀི 付款金額𓊇ྀི：${order.final_amount || 0}`;
-
+        ${dynamicText}
+        𓊆ྀི 遊戲暱稱𓊇ྀི：${order.nickname || ''}
+        𓊆ྀི 購買商品𓊇ྀི：${order.item_name || ''}
+        𓊆ྀི IG/LINE名稱𓊇ྀི：${order.line_name || '未綁定'}
+        𓊆ྀི FB個人主頁𓊇ྀི：${order.fb_link || '未提供'}
+        𓊆ྀི 付款金額𓊇ྀི：${order.final_amount || 0}`;
+        
+            // 4. 寫入剪貼簿與按鈕特效
             navigator.clipboard.writeText(textToCopy).then(() => {
                 const originalText = btnElement.innerText;
                 btnElement.innerText = '✅ 已複製';
