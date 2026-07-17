@@ -9,7 +9,7 @@
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; background: #f5f5f7; margin: 0; }
         .container { max-width: 1600px; margin: 0 auto; }
         
-        /* 頂部導覽列 (與首頁共用設計) */
+        /* 頂部導覽列 */
         .main-nav { display: flex; gap: 15px; margin-bottom: 25px; border-bottom: 2px solid #eee; padding-bottom: 15px; }
         .nav-btn { text-decoration: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; color: #666; background: #e8ecef; transition: 0.3s; }
         .nav-btn:hover { background: #d1d5db; }
@@ -34,25 +34,28 @@
         .tab-btn.active { background: #d9383a; color: white; border-color: #d9383a; box-shadow: 0 4px 10px rgba(217, 56, 58, 0.2); }
 
         /* 頁籤內容區塊 */
-        .tab-content {
-            display: none; /* 預設全部隱藏 */
-            background: white;
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-            min-height: 400px;
-        }
-        .tab-content.active {
-            display: block; /* 加上 active 的才會顯示 */
-            animation: fadeIn 0.3s ease;
-        }
-
+        .tab-content { display: none; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); min-height: 400px; }
+        .tab-content.active { display: block; animation: fadeIn 0.3s ease; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 
-        /* 簡易表格樣式 (示意用) */
+        /* 表格與操作元素樣式 */
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; font-size: 14px; }
-        th { background-color: #f9f9fb; color: #666; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; font-size: 14px; vertical-align: middle; }
+        th { background-color: #f9f9fb; color: #666; white-space: nowrap; }
+        
+        /* 狀態下拉選單顏色 */
+        .status-select { padding: 6px 10px; border-radius: 6px; border: 1px solid #ccc; font-weight: bold; cursor: pointer; outline: none; font-size: 13px; }
+        .status-select.未付款 { background-color: #ffebee; color: #c62828; border-color: #ffcdd2; }
+        .status-select.已付款 { background-color: #fff8e1; color: #f57f17; border-color: #ffecb3; }
+        .status-select.處理中 { background-color: #e3f2fd; color: #1565c0; border-color: #bbdefb; }
+        .status-select.已完成 { background-color: #e8f5e9; color: #2e7d32; border-color: #c8e6c9; }
+        .status-select.已取消 { background-color: #f5f5f5; color: #616161; border-color: #e0e0e0; }
+
+        /* 複製按鈕 */
+        .btn-copy { background-color: #002D62; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; transition: 0.2s; font-weight: bold; }
+        .btn-copy:hover { background-color: #004080; }
+        
+        .time-text { font-size: 12px; color: #888; display: block; margin-top: 4px; }
     </style>
 </head>
 <body>
@@ -73,20 +76,29 @@
 
         <div id="tab-valorant" class="tab-content active">
             <h3>特戰英豪 - 訂單列表</h3>
-            <p style="color: #666; font-size: 14px;">此區塊將專門計算 Riot ID 與特務幣的結算邏輯。</p>
             <table>
                 <thead>
-                    <tr><th>訂單號</th><th>Riot ID</th><th>標籤</th><th>購買商品</th><th>實付金額</th><th>狀態</th></tr>
+                    <tr>
+                        <th>訂單號 / 時間</th>
+                        <th>Riot ID</th>
+                        <th>標籤 (Tag)</th>
+                        <th>購買商品</th>
+                        <th>實付金額</th>
+                        <th>付款方式</th>
+                        <th>狀態管理</th>
+                        <th>完成時間</th>
+                        <th>操作</th>
+                    </tr>
                 </thead>
                 <tbody id="tbody-valorant">
-                    <tr><td colspan="6" style="text-align: center; color: #999;">尚未載入資料...</td></tr>
+                    <tr><td colspan="9" style="text-align: center; color: #999;">尚未載入資料...</td></tr>
                 </tbody>
             </table>
         </div>
 
+        <!-- Roblox 與極速領域的區塊暫時維持結構 -->
         <div id="tab-roblox" class="tab-content">
             <h3>Roblox - 訂單列表</h3>
-            <p style="color: #666; font-size: 14px;">此區塊將專門處理 Roblox 帳號密碼與 Robux 的結算邏輯。</p>
             <table>
                 <thead>
                     <tr><th>訂單號</th><th>Roblox 帳號</th><th>密碼</th><th>購買商品</th><th>實付金額</th><th>狀態</th></tr>
@@ -99,7 +111,6 @@
 
         <div id="tab-speed-drivers" class="tab-content">
             <h3>極速領域 - 訂單列表</h3>
-            <p style="color: #666; font-size: 14px;">此區塊將專門處理極速領域的結算邏輯。</p>
             <table>
                 <thead>
                     <tr><th>訂單號</th><th>登入方式</th><th>帳號/密碼</th><th>購買商品</th><th>實付金額</th><th>狀態</th></tr>
@@ -113,17 +124,24 @@
     </div>
 
     <script>
-        // 初始化 Supabase (請填入你的 URL 與 KEY)
+        // 初始化 Supabase
         const SUPABASE_URL = 'https://sizlxeoconbuxkyrtnqd.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpemx4ZW9jb25idXhreXJ0bnFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3NTg4OTgsImV4cCI6MjA5NDMzNDg5OH0.Lu6f3HgJ_wsM-pLhK0j3tNbK7hu_1E19rj63iVn0qqI';
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         
+        // 時間格式化工具 (輸出格式：MM/DD HH:mm)
+        function formatTime(isoString) {
+            if (!isoString) return '-';
+            const date = new Date(isoString);
+            return date.toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
+        }
+
         // 抓取特戰英豪訂單
         async function fetchValorantOrders() {
             const { data, error } = await supabaseClient
                 .from('orders')
                 .select('*')
-                .eq('game_id', 'valorant') // 🎯 關鍵：只抓特戰英豪的單！
+                .eq('game_id', 'valorant')
                 .order('id', { ascending: false });
         
             if (error) {
@@ -140,52 +158,104 @@
             tbody.innerHTML = '';
         
             orders.forEach(order => {
-                // 1. 解析專屬的 account_info JSON
                 let riotId = '---';
                 let tagline = '---';
                 if (order.account_info) {
                     try {
-                        const info = JSON.parse(order.account_info);
+                        const info = typeof order.account_info === 'string' ? JSON.parse(order.account_info) : order.account_info;
                         riotId = info.riot_id || '---';
                         tagline = info.tagline || '---';
                     } catch (e) {
                         console.error("JSON 解析失敗", e);
                     }
                 }
+
+                const createdTime = formatTime(order.created_at);
+                const completedTime = order.completed_at ? formatTime(order.completed_at) : '-';
+                const currentStatus = order.status || '未付款';
+                const paymentMethod = order.payment_method || '未指定';
         
-                // 2. 建立表格列 (HTML 對應我們設定好的 6 個表頭)
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td><strong>${order.order_no}</strong></td>
+                    <td>
+                        <strong>${order.order_no}</strong>
+                        <span class="time-text">${createdTime}</span>
+                    </td>
                     <td><code style="color: #0071e3; background: #e8f4fd; padding: 4px; border-radius: 4px;">${riotId}</code></td>
                     <td><code style="color: #d9383a; background: #fdf3e8; padding: 4px; border-radius: 4px;">#${tagline}</code></td>
                     <td>${order.item_name}</td>
-                    <td style="color: #d9383a; font-weight: bold;">$ ${order.final_amount}</td>
+                    <td style="color: #d9383a; font-weight: bold;">$${order.final_amount}</td>
+                    <td>${paymentMethod}</td>
                     <td>
-                        <!-- 簡易的狀態顯示，你可以沿用第五人格的下拉選單寫法 -->
-                        <span style="background: #eee; padding: 4px 8px; border-radius: 4px; font-size: 12px;">${order.status}</span>
+                        <select class="status-select ${currentStatus}" onchange="updateOrderStatus('${order.id}', this.value, this)">
+                            <option value="未付款" ${currentStatus === '未付款' ? 'selected' : ''}>未付款</option>
+                            <option value="已付款" ${currentStatus === '已付款' ? 'selected' : ''}>已付款</option>
+                            <option value="處理中" ${currentStatus === '處理中' ? 'selected' : ''}>處理中</option>
+                            <option value="已完成" ${currentStatus === '已完成' ? 'selected' : ''}>已完成</option>
+                            <option value="已取消" ${currentStatus === '已取消' ? 'selected' : ''}>已取消</option>
+                        </select>
+                    </td>
+                    <td id="completed-time-${order.id}">${completedTime}</td>
+                    <td>
+                        <button class="btn-copy" onclick="copyValorantOrder('${order.order_no}', '${riotId}', '${tagline}', '${order.item_name}')">
+                            複製報單
+                        </button>
                     </td>
                 `;
                 tbody.appendChild(tr);
             });
         }
-        
-        // 當點擊特戰英豪頁籤時，觸發抓取資料
-        function switchTab(gameId) {
+
+        // 更新訂單狀態與完成時間
+        async function updateOrderStatus(orderId, newStatus, selectElement) {
+            // 先在前端更新 select 顏色
+            selectElement.className = `status-select ${newStatus}`;
             
-            // ... 原本的切換 UI 邏輯 ...
+            const updateData = { status: newStatus };
+            
+            // 如果改為已完成，紀錄當下時間
+            if (newStatus === '已完成') {
+                updateData.completed_at = new Date().toISOString();
+                document.getElementById(`completed-time-${orderId}`).innerText = formatTime(updateData.completed_at);
+            }
+
+            const { error } = await supabaseClient
+                .from('orders')
+                .update(updateData)
+                .eq('id', orderId);
+
+            if (error) {
+                alert('狀態更新失敗！請檢查網路或資料庫權限。');
+                console.error(error);
+                fetchValorantOrders(); // 失敗則重整復原
+            }
+        }
+
+        // 一鍵複製報單資訊給 SG 客服
+        function copyValorantOrder(orderNo, riotId, tagline, itemName) {
+            const textToCopy = `【特戰英豪 代儲】\n訂單編號：${orderNo}\nRiot ID：${riotId}\n標籤(Tag)：#${tagline}\n儲值項目：${itemName}`;
+            
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                alert('✅ 訂單資訊已複製！\n可直接貼上給客服。');
+            }).catch(err => {
+                console.error('複製失敗', err);
+                alert('複製失敗，請手動選取複製');
+            });
+        }
+        
+        // 頁籤切換邏輯
+        function switchTab(gameId) {
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
             event.target.classList.add('active');
             document.getElementById(`tab-${gameId}`).classList.add('active');
         
-            // 觸發對應的 API 抓取
             if (gameId === 'valorant') {
                 fetchValorantOrders();
             }
         }
         
-        // 網頁載入時預設抓取一次
+        // 網頁載入時預設抓取特戰英豪訂單
         document.addEventListener('DOMContentLoaded', () => {
             fetchValorantOrders();
         });
