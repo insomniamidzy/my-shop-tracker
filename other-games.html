@@ -287,15 +287,23 @@
         }
 
         async function updateOrderStatus(orderId, newStatus, selectElement) {
-            console.log(`[觸發更新] 訂單ID: ${orderId}, 準備改為狀態: ${newStatus}`);
+            console.log(`[觸發更新] 訂單ID: ${orderId} (型別: ${typeof orderId}), 狀態: ${newStatus}`);
+            
             selectElement.className = `status-select ${newStatus}`;
             const updateData = { status: newStatus };
-        
-            // 核心邏輯：在轉為 processing 時計算總成本
+            
+            // ✨ 加入這行：強制將 orderId 轉為數字，並確保是用數字去比對
+            const targetId = parseInt(orderId);
+            
             if (newStatus === 'processing') {
-                const order = allValorantOrders.find(o => o.id === orderId);
+                // ✨ 改用 parseInt 比對
+                const order = allValorantOrders.find(o => parseInt(o.id) === targetId);
+                
+                console.log(`[檢查訂單] 找到訂單:`, order);
                 
                 if (order && !order.sg_cost) {
+                    console.log("進入計算區塊...");
+                    // ... 後面原本的計算邏輯保持不變 ...
                     let totalOrderCost = 0;
                     const items = order.item_name.split('+').map(i => i.trim());
                     
@@ -305,18 +313,12 @@
                             const itemName = match[1].trim();
                             const quantity = parseInt(match[2]);
                             
-                            // ✨ 加入這行除錯
-                            console.log(`正在查詢商品: "${itemName}", 數量: ${quantity}`);
-                            
-                            const { data: costData, error } = await supabaseClient
+                            const { data: costData } = await supabaseClient
                                 .from('sg_costs')
                                 .select('cost_price')
                                 .eq('item_name', itemName)
                                 .single();
-                            
-                            // ✨ 加入這行除錯
-                            console.log("查詢結果:", costData, "錯誤:", error);
-                            
+                                
                             if (costData) {
                                 totalOrderCost += (costData.cost_price * quantity);
                             }
@@ -329,14 +331,13 @@
                 }
             }
         
-            // ✨ 這裡也要改回 supabaseClient
-            const { error } = await supabaseClient.from('orders').update(updateData).eq('id', orderId);
+            // 更新資料庫
+            const { error } = await supabaseClient.from('orders').update(updateData).eq('id', targetId);
             
             if (error) {
                 alert('狀態更新失敗！');
                 console.error("更新錯誤:", error);
             } else {
-                // 更新成功後重新繪製畫面以顯示利潤
                 fetchValorantOrders();
             }
         }
