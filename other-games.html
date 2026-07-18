@@ -236,11 +236,18 @@
                     } catch (e) {}
                 }
 
+                // 在迴圈內渲染表格時：
+                
                 const createdTime = formatTime(order.created_at);
                 const completedTime = order.completed_at ? formatTime(order.completed_at) : '-';
                 const currentStatus = order.status || 'pending';
                 const paymentMethod = order.payment_method || '未指定';
-        
+                
+                // ✨ 新增邏輯：計算利潤 (如果 sg_cost 有值的話)
+                const cost = order.sg_cost || 0;
+                const profit = order.final_amount - cost;
+                const profitColor = profit >= 0 ? '#2e7d32' : '#d9383a'; // 賺錢變綠色，賠錢變紅色
+                
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td>
@@ -250,7 +257,14 @@
                     <td><code style="color: #0071e3; background: #e8f4fd; padding: 4px; border-radius: 4px;">${riotId}</code></td>
                     <td><code style="color: #d9383a; background: #fdf3e8; padding: 4px; border-radius: 4px;">#${tagline}</code></td>
                     <td>${order.item_name}</td>
-                    <td style="color: #d9383a; font-weight: bold;">$${order.final_amount}</td>
+                    
+                    <!-- ✨ 修改這一段：加入成本與利潤顯示 -->
+                    <td>
+                        <div style="font-weight: bold; color: #333;">售價: $${order.final_amount}</div>
+                        <div style="font-size: 12px; color: #666;">成本: ${cost > 0 ? '$' + cost : '未計算'}</div>
+                        <div style="font-size: 12px; font-weight: bold; color: ${profitColor};">利潤: ${cost > 0 ? '$' + profit : '-'}</div>
+                    </td>
+                    
                     <td>${paymentMethod}</td>
                     <td>
                         <select class="status-select ${currentStatus}" onchange="updateOrderStatus('${order.id}', this.value, this)">
