@@ -51,14 +51,17 @@
     </div>
 
     <script>
-        // 替換成你的 Supabase 資訊
+        // 替換成你的 Supabase 資訊 (記得填入你的 ANON KEY)
         const SUPABASE_URL = 'https://sizlxeoconbuxkyrtnqd.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpemx4ZW9jb25idXhreXJ0bnFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3NTg4OTgsImV4cCI6MjA5NDMzNDg5OH0.Lu6f3HgJ_wsM-pLhK0j3tNbK7hu_1E19rj63iVn0qqI';
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const SUPABASE_ANON_KEY = '請把你的_ANON_KEY_貼回這裡';
+        
+        // ✨ 改名為 adminClient 避免衝突
+        const adminClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         // 載入商品列表
         async function loadCosts() {
-            const { data, error } = await supabase.from('sg_costs').select('*').order('game_id');
+            // ✨ 這裡使用 adminClient
+            const { data, error } = await adminClient.from('sg_costs').select('*').order('game_id');
             if (error) return alert("讀取失敗：" + error.message);
             
             const listDiv = document.getElementById('cost-list');
@@ -99,7 +102,8 @@
             const newPrice = document.getElementById(`price-${id}`).value;
             const newStock = document.getElementById(`stock-${id}`).value === 'true';
 
-            const { error } = await supabase
+            // ✨ 這裡使用 adminClient
+            const { error } = await adminClient
                 .from('sg_costs')
                 .update({ cost_price: newPrice, in_stock: newStock })
                 .eq('id', id);
@@ -112,7 +116,7 @@
             }
         }
 
-        // ✨ 處理「新增商品」邏輯
+        // 處理「新增商品」邏輯
         async function addNewItem() {
             const gameId = document.getElementById('new-game-id').value;
             const itemName = document.getElementById('new-item-name').value.trim();
@@ -122,8 +126,8 @@
                 return alert("請填寫完整的商品名稱與成本價！");
             }
 
-            // 直接寫入資料庫，預設有貨 (in_stock: true)
-            const { error } = await supabase.from('sg_costs').insert([
+            // ✨ 這裡使用 adminClient
+            const { error } = await adminClient.from('sg_costs').insert([
                 { game_id: gameId, item_name: itemName, cost_price: parseInt(itemPrice), in_stock: true }
             ]);
 
