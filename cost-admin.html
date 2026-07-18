@@ -31,8 +31,20 @@
 
     <div class="container">
         <h1>📊 SG 成本與貨源控制台</h1>
-        <p style="color: #666; margin-bottom: 20px;">葉子專用：直接在下方修改成本價或貨源狀態，點擊「更新」即可同步至網站。</p>
+        <p style="color: #666; margin-bottom: 20px;">葉子專用：可以直接在下方修改成本或新增商品，點擊「更新」即可同步至網站。</p>
         
+        <!-- ✨ 新增：讓葉子可以自己增加新商品的區塊 -->
+        <div style="background: #e8f4fd; padding: 15px; border-radius: 8px; margin-bottom: 25px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <strong style="color: #0071e3;">➕ 新增商品：</strong>
+            <select id="new-game-id" style="padding: 6px;">
+                <option value="valorant">特戰英豪</option>
+                <option value="identity-v">第五人格</option>
+            </select>
+            <input type="text" id="new-item-name" placeholder="輸入完整商品名稱 (例: 13050 特務幣 x 1)" style="padding: 6px; width: 250px;">
+            <input type="number" id="new-item-price" placeholder="成本價" style="padding: 6px; width: 80px;">
+            <button class="btn-update" style="background: #0071e3;" onclick="addNewItem()">新增</button>
+        </div>
+
         <div id="cost-list">
             <p>資料載入中...</p>
         </div>
@@ -44,6 +56,7 @@
         const SUPABASE_ANON_KEY = '你的_ANON_KEY';
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+        // 載入商品列表
         async function loadCosts() {
             const { data, error } = await supabase.from('sg_costs').select('*').order('game_id');
             if (error) return alert("讀取失敗：" + error.message);
@@ -51,12 +64,18 @@
             const listDiv = document.getElementById('cost-list');
             listDiv.innerHTML = '';
 
+            // ✨ 防呆處理：如果資料庫是空的
+            if (!data || data.length === 0) {
+                listDiv.innerHTML = '<div style="text-align: center; padding: 40px; color: #888; background: #f9f9fb; border-radius: 8px;">目前還沒有任何商品喔！請使用上方的「新增商品」功能來建立第一筆資料。</div>';
+                return;
+            }
+
             data.forEach(item => {
                 const row = document.createElement('div');
                 row.className = 'item-row';
                 row.innerHTML = `
                     <div class="item-info">
-                        <span class="item-game">${item.game_id === 'valorant' ? '特戰英豪' : item.game_id}</span><br>
+                        <span class="item-game">${item.game_id === 'valorant' ? '特戰英豪' : (item.game_id === 'identity-v' ? '第五人格' : item.game_id)}</span><br>
                         <span class="item-name">${item.item_name}</span>
                     </div>
                     <div class="controls">
@@ -75,6 +94,7 @@
             });
         }
 
+        // 更新現有商品
         async function updateItem(id, itemName) {
             const newPrice = document.getElementById(`price-${id}`).value;
             const newStock = document.getElementById(`stock-${id}`).value === 'true';
@@ -87,12 +107,36 @@
             if (error) {
                 alert(`❌ [${itemName}] 更新失敗: \n` + error.message);
             } else {
-                alert(`✅ [${itemName}] 已更新！\n最新成本：${newPrice} 元\n貨源：${newStock ? '正常' : '缺貨'}`);
-                loadCosts(); // 重新載入刷新畫面顏色
+                alert(`✅ [${itemName}] 已更新！`);
+                loadCosts(); 
             }
         }
 
-        // 頁面載入時自動抓取資料
+        // ✨ 處理「新增商品」邏輯
+        async function addNewItem() {
+            const gameId = document.getElementById('new-game-id').value;
+            const itemName = document.getElementById('new-item-name').value.trim();
+            const itemPrice = document.getElementById('new-item-price').value;
+
+            if (!itemName || !itemPrice) {
+                return alert("請填寫完整的商品名稱與成本價！");
+            }
+
+            // 直接寫入資料庫，預設有貨 (in_stock: true)
+            const { error } = await supabase.from('sg_costs').insert([
+                { game_id: gameId, item_name: itemName, cost_price: parseInt(itemPrice), in_stock: true }
+            ]);
+
+            if (error) {
+                alert("❌ 新增失敗，請檢查商品名稱是否重複：" + error.message);
+            } else {
+                alert("✅ 成功新增商品！");
+                document.getElementById('new-item-name').value = '';
+                document.getElementById('new-item-price').value = '';
+                loadCosts(); // 重新整理列表
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', loadCosts);
     </script>
 </body>
