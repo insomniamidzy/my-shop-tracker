@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SG 成本與貨源控制台</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: -apple-system, sans-serif; background: #f5f5f7; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        h1 { color: #002D62; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        
+        .item-row { display: flex; align-items: center; justify-content: space-between; padding: 15px; border-bottom: 1px solid #eee; transition: 0.2s; }
+        .item-row:hover { background: #f9f9fb; }
+        
+        .item-info { flex: 2; }
+        .item-name { font-weight: bold; font-size: 16px; color: #333; }
+        .item-game { font-size: 12px; color: #888; background: #e8ecef; padding: 2px 6px; border-radius: 4px; }
+        
+        .controls { flex: 3; display: flex; gap: 10px; align-items: center; justify-content: flex-end; }
+        
+        input[type="number"] { padding: 8px; width: 100px; border: 1px solid #ccc; border-radius: 6px; font-size: 15px; text-align: center; }
+        select { padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; outline: none; }
+        
+        .btn-update { padding: 8px 16px; background: #107c41; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        .btn-update:hover { background: #0b592e; }
+        .btn-update:active { transform: scale(0.95); }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>📊 SG 成本與貨源控制台</h1>
+        <p style="color: #666; margin-bottom: 20px;">葉子專用：直接在下方修改成本價或貨源狀態，點擊「更新」即可同步至網站。</p>
+        
+        <div id="cost-list">
+            <p>資料載入中...</p>
+        </div>
+    </div>
+
+    <script>
+        // 替換成你的 Supabase 資訊
+        const SUPABASE_URL = 'https://sizlxeoconbuxkyrtnqd.supabase.co';
+        const SUPABASE_ANON_KEY = '你的_ANON_KEY';
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        async function loadCosts() {
+            const { data, error } = await supabase.from('sg_costs').select('*').order('game_id');
+            if (error) return alert("讀取失敗：" + error.message);
+            
+            const listDiv = document.getElementById('cost-list');
+            listDiv.innerHTML = '';
+
+            data.forEach(item => {
+                const row = document.createElement('div');
+                row.className = 'item-row';
+                row.innerHTML = `
+                    <div class="item-info">
+                        <span class="item-game">${item.game_id === 'valorant' ? '特戰英豪' : item.game_id}</span><br>
+                        <span class="item-name">${item.item_name}</span>
+                    </div>
+                    <div class="controls">
+                        <label>成本(NT$)：</label>
+                        <input type="number" id="price-${item.id}" value="${item.cost_price}">
+                        
+                        <select id="stock-${item.id}" style="background-color: ${item.in_stock ? '#e8f5e9' : '#ffebee'};">
+                            <option value="true" ${item.in_stock ? 'selected' : ''}>🟢 供貨正常</option>
+                            <option value="false" ${!item.in_stock ? 'selected' : ''}>🔴 缺貨中</option>
+                        </select>
+
+                        <button class="btn-update" onclick="updateItem(${item.id}, '${item.item_name}')">💾 更新</button>
+                    </div>
+                `;
+                listDiv.appendChild(row);
+            });
+        }
+
+        async function updateItem(id, itemName) {
+            const newPrice = document.getElementById(`price-${id}`).value;
+            const newStock = document.getElementById(`stock-${id}`).value === 'true';
+
+            const { error } = await supabase
+                .from('sg_costs')
+                .update({ cost_price: newPrice, in_stock: newStock })
+                .eq('id', id);
+
+            if (error) {
+                alert(`❌ [${itemName}] 更新失敗: \n` + error.message);
+            } else {
+                alert(`✅ [${itemName}] 已更新！\n最新成本：${newPrice} 元\n貨源：${newStock ? '正常' : '缺貨'}`);
+                loadCosts(); // 重新載入刷新畫面顏色
+            }
+        }
+
+        // 頁面載入時自動抓取資料
+        document.addEventListener('DOMContentLoaded', loadCosts);
+    </script>
+</body>
+</html>
