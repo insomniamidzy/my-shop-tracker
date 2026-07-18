@@ -304,13 +304,18 @@
                             const itemName = match[1].trim();
                             const quantity = parseInt(match[2]);
                             
-                            // ✨ 這裡一定要改回 supabaseClient，因為這是 other-games.html 的變數名稱
-                            const { data: costData } = await supabaseClient
+                            // ✨ 加入這行除錯
+                            console.log(`正在查詢商品: "${itemName}", 數量: ${quantity}`);
+                            
+                            const { data: costData, error } = await supabaseClient
                                 .from('sg_costs')
                                 .select('cost_price')
                                 .eq('item_name', itemName)
                                 .single();
-                                
+                            
+                            // ✨ 加入這行除錯
+                            console.log("查詢結果:", costData, "錯誤:", error);
+                            
                             if (costData) {
                                 totalOrderCost += (costData.cost_price * quantity);
                             }
