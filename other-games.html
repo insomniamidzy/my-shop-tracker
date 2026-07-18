@@ -287,6 +287,7 @@
         }
 
         async function updateOrderStatus(orderId, newStatus, selectElement) {
+            console.log(`[觸發更新] 訂單ID: ${orderId}, 準備改為狀態: ${newStatus}`);
             selectElement.className = `status-select ${newStatus}`;
             const updateData = { status: newStatus };
         
