@@ -294,23 +294,18 @@
             if (newStatus === 'processing') {
                 const order = allValorantOrders.find(o => o.id === orderId);
                 
-                // 只有還沒記錄過成本時才計算
                 if (order && !order.sg_cost) {
                     let totalOrderCost = 0;
-                    
-                    // 1. 以 "+" 切開組合單 (例如: "A x 1 + B x 2")
                     const items = order.item_name.split('+').map(i => i.trim());
                     
                     for (const itemStr of items) {
-                        // 2. 使用正規表達式拆解名稱與數量
-                        // 假設格式是 "商品名稱 x 數量"
                         const match = itemStr.match(/(.*)x\s*(\d+)/i);
                         if (match) {
-                            const itemName = match[1].trim(); // 抓出名稱
-                            const quantity = parseInt(match[2]); // 抓出數量
+                            const itemName = match[1].trim();
+                            const quantity = parseInt(match[2]);
                             
-                            // 3. 去資料庫查該品項的「單位成本」
-                            const { data: costData } = await adminClient
+                            // ✨ 這裡一定要改回 supabaseClient，因為這是 other-games.html 的變數名稱
+                            const { data: costData } = await supabaseClient
                                 .from('sg_costs')
                                 .select('cost_price')
                                 .eq('item_name', itemName)
@@ -324,16 +319,19 @@
                     
                     if (totalOrderCost > 0) {
                         updateData.sg_cost = totalOrderCost;
-                        order.sg_cost = totalOrderCost; // 更新本地狀態
-                        console.log(`訂單 ${order.order_no} 總成本已計算: ${totalOrderCost}`);
                     }
                 }
             }
         
-            // 更新資料庫
-            const { error } = await adminClient.from('orders').update(updateData).eq('id', orderId);
+            // ✨ 這裡也要改回 supabaseClient
+            const { error } = await supabaseClient.from('orders').update(updateData).eq('id', orderId);
+            
             if (error) {
                 alert('狀態更新失敗！');
+                console.error("更新錯誤:", error);
+            } else {
+                // 更新成功後重新繪製畫面以顯示利潤
+                fetchValorantOrders();
             }
         }
 
