@@ -6,7 +6,6 @@
     <title>代充訂單即時對帳監控（動態擴充版）</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        /* 將這段加進 <style> 裡面 */
         .main-nav {
             display: flex;
             gap: 15px;
@@ -23,9 +22,7 @@
             background: #e8ecef;
             transition: 0.3s;
         }
-        .nav-btn:hover {
-            background: #d1d5db;
-        }
+        .nav-btn:hover { background: #d1d5db; }
         .nav-btn.active {
             background: #002D62;
             color: white;
@@ -36,9 +33,7 @@
         .header-zone { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
         h2 { color: #333; margin: 0; display: flex; align-items: center; gap: 10px; }
         
-        .user-zone { display: flex; align-items: center; gap: 10px; background: white; padding: 10px 15px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
         .user-select { padding: 6px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 14px; font-weight: 500; }
-
         .tools-zone { display: flex; gap: 15px; align-items: center; background: white; padding: 10px 15px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
         .search-input { padding: 6px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 14px; width: 250px; outline: none; transition: 0.2s; }
         .search-input:focus { border-color: #0071e3; box-shadow: 0 0 0 2px rgba(0,113,227,0.2); }
@@ -48,16 +43,12 @@
         th { background-color: #f9f9fb; color: #666; font-weight: 600; }
         tr:hover { background-color: #fafafa; }
         
-        tr.locked-by-other { background-color: #f9f9f9; opacity: 0.6; }
-        tr.locked-by-me { background-color: #f0f7ff; }
-
         .status-badge { padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; display: inline-block; }
         .status-success { background: #e3fbe3; color: #1e7e34; }
         .status-warning { background: #fff3cd; color: #856404; }
         .status-info { background: #e8f4fd; color: #0071e3; }
         .status-gift { background: #fdf3e8; color: #e37e00; } 
         .status-server { background: #e8ecef; color: #495057; border: 1px solid #dee2e6; margin-bottom: 4px; }
-        .status-locked { background: #e2e3e5; color: #383d41; }
         .game-badge { background: #fce4ec; color: #c2185b; }
         
         .amount-input { width: 70px; padding: 4px 6px; border: 1px solid transparent; border-radius: 4px; font-size: 14px; font-weight: 700; color: #d9383a; background: transparent; transition: 0.2s; outline: none; }
@@ -67,18 +58,13 @@
         
         .transfer-checkbox { width: 18px; height: 18px; cursor: pointer; accent-color: #8e44ad; }
 
-        .btn-lock { padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; transition: 0.2s; }
-        .btn-lock:hover { background: #218838; }
-        .btn-unlock { padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; transition: 0.2s; }
-        .btn-unlock:hover { background: #c82333; }
         .btn-copy { padding: 6px 12px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; transition: 0.2s; width: 100%; box-sizing: border-box; }
         .btn-copy:hover { background: #138496; }
-
         .btn-export { padding: 6px 14px; background: #107c41; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; transition: 0.2s; display: flex; align-items: center; gap: 6px; }
         .btn-export:hover { background: #0b592e; box-shadow: 0 2px 6px rgba(16,124,65,0.2); }
+        .btn-config { padding: 6px 12px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; transition: 0.2s; }
 
         .status-dropdown { padding: 4px 8px; border-radius: 6px; border: 1px solid #ccc; font-size: 13px; font-weight: 600; cursor: pointer; }
-        .status-dropdown:disabled { cursor: not-allowed; background-color: #eee; }
 
         #loading { color: #666; font-style: italic; margin-bottom: 15px; }
         code { background: #f4f4f4; padding: 2px 6px; border-radius: 4px; font-family: monospace; }
@@ -109,7 +95,6 @@
         .dash-val { font-weight: 700; color: #0071e3; }
         .dash-total { margin-top: 12px; padding-top: 10px; border-top: 1px dashed #ccc; font-size: 16px; font-weight: 800; color: #d9383a; display: flex; justify-content: space-between; }
         .points-text { color: #8e44ad; font-weight: 800; }
-        
         .dynamic-info-container { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
     </style>
 </head>
@@ -137,15 +122,7 @@
                 </select>
 
                 <button onclick="exportToCSV()" class="btn-export">📥 匯出顯示資料</button>
-                <button onclick="openConfigModal()" class="btn-lock" style="background: #6c757d; margin-left: auto;">⚙️ 設定</button>
-            </div>
-            
-            <div class="user-zone">
-                <label for="operator-select">👤 當前操作業務：</label>
-                <select id="operator-select" class="user-select" onchange="renderOrders()">
-                    <option value="葉子">葉子</option>
-                    <option value="牧宣">牧宣</option>
-                </select>
+                <button onclick="openConfigModal()" class="btn-config" style="margin-left: auto;">⚙️ 設定</button>
             </div>
         </div>
         
@@ -155,6 +132,7 @@
             <thead>
                 <tr>
                     <th>訂單編號</th>
+                    <th>業務來源</th> <!-- ✨ 新增業務來源欄位 -->
                     <th>轉單</th>
                     <th>遊戲項目</th> 
                     <th>帳號詳細資訊</th>
@@ -166,7 +144,6 @@
                     <th>實名狀態</th>
                     <th>訂單狀態</th>
                     <th>完成時間</th>
-                    <th>鎖定狀態</th>
                     <th>動作</th>
                 </tr>
             </thead>
@@ -234,10 +211,6 @@
             'password': '密碼'
         };
 
-        function getCurrentOperator() {
-            return document.getElementById('operator-select').value;
-        }
-
         async function fetchOrders() {
             const isFirstLoad = document.getElementById('orders-body').children.length === 0;
             if (isFirstLoad) {
@@ -247,8 +220,8 @@
 
             const { data, error } = await supabaseClient
                 .from('orders')
-                .select('id, order_no, game_id, account_info, department, uid, nickname, server_str, realname_status, item_name, final_amount, payment_method, extra_gifts, is_locked, operator, status, line_name, completed_at, created_at, is_transfer, fb_link')
-                .or('game_id.eq.identity-v,game_id.is.null') // 🎯 關鍵：只抓第五人格的單，與以前未分類的舊單！
+                .select('id, order_no, game_id, account_info, department, uid, nickname, server_str, realname_status, item_name, final_amount, payment_method, extra_gifts, operator, status, line_name, completed_at, created_at, is_transfer, fb_link')
+                .or('game_id.eq.identity-v,game_id.is.null') 
                 .order('id', { ascending: false });
 
             document.getElementById('loading').style.display = 'none';
@@ -263,7 +236,6 @@
         }
 
         function renderOrders() {
-            const currentOp = getCurrentOperator();
             const statusFilter = document.getElementById('status-filter').value;
             const searchTerm = document.getElementById('search-input').value.toLowerCase();
             const dateFilter = document.getElementById('date-filter').value; 
@@ -283,9 +255,8 @@
             let countEvent3 = 0;
 
             currentlyFilteredOrders = allOrdersData.filter(order => {
-                // ✨ 雙重防呆：確保畫面只顯示第五人格或舊單
                 const isIdv = order.game_id === 'identity-v' || !order.game_id || order.game_id === '';
-                if (!isIdv) return false; // 如果不是第五人格，直接踢除不顯示
+                if (!isIdv) return false; 
 
                 const currentStatus = order.status || 'pending';
                 const matchStatus = (statusFilter === 'all') || (currentStatus === statusFilter);
@@ -296,7 +267,8 @@
                     infoSearchStr = Object.values(infoObj).join(' ');
                 }
 
-                const searchString = `${order.order_no} ${order.uid} ${order.nickname} ${order.line_name} ${infoSearchStr} ${order.game_id}`.toLowerCase();
+                // 搜尋詞加入 operator
+                const searchString = `${order.order_no} ${order.uid} ${order.nickname} ${order.line_name} ${infoSearchStr} ${order.game_id} ${order.operator || ''}`.toLowerCase();
                 const matchSearch = searchString.includes(searchTerm);
                 
                 let matchDate = true;
@@ -371,28 +343,17 @@
                     statusClass = 'status-warning';
                 }
 
-                let lockStatusHtml = '<span class="status-badge status-info">待處理 ☕</span>';
-                let actionBtnHtml = `<button class="btn-lock" onclick="toggleLock(${order.id}, true)">🔒 我來處理</button>`;
-                let isSelectDisabled = false; 
-                let isAmountDisabled = false; 
-                
-                if (order.is_locked) {
-                    if (order.operator === currentOp) {
-                        tr.className = 'locked-by-me';
-                        lockStatusHtml = `<span class="status-badge status-warning">你自己處理中 ⚡</span>`;
-                        actionBtnHtml = `<button class="btn-unlock" onclick="toggleLock(${order.id}, false)">🔓 釋放訂單</button>`;
-                    } else {
-                        tr.className = 'locked-by-other';
-                        lockStatusHtml = `<span class="status-badge status-locked">❌ ${order.operator} 處理中</span>`;
-                        actionBtnHtml = `<button class="btn-lock" disabled style="background:#ccc; cursor:not-allowed;">已被鎖定</button>`;
-                        isSelectDisabled = true; 
-                        isAmountDisabled = true;
-                    }
+                // ✨ 處理九歌/業務來源標籤
+                let operatorBadge = '<span style="color: #999;">一般</span>';
+                if (order.operator === '九歌') {
+                    operatorBadge = '<span class="status-badge" style="background: #673ab7; color: white;">💼 九歌</span>';
+                } else if (order.operator) {
+                    operatorBadge = `<span class="status-badge status-server">${order.operator}</span>`;
                 }
 
                 const currentStatus = order.status || 'pending';
                 const statusDropdownHtml = `
-                    <select class="status-dropdown" data-id="${order.id}" onchange="updateOrderStatus(this)" ${isSelectDisabled ? 'disabled' : ''}>
+                    <select class="status-dropdown" data-id="${order.id}" onchange="updateOrderStatus(this)">
                         <option value="pending" ${currentStatus === 'pending' ? 'selected' : ''}>🟡 未付款</option>
                         <option value="paid" ${currentStatus === 'paid' ? 'selected' : ''}>🟢 已付款</option>
                         <option value="completed" ${currentStatus === 'completed' ? 'selected' : ''}>✅ 已完成</option>
@@ -422,15 +383,13 @@
                     <div style="text-align: center;">
                         <input type="checkbox" class="transfer-checkbox" 
                                data-id="${order.id}" data-item="${order.item_name}" 
-                               ${isTransferChecked} onchange="handleTransferToggle(this)" ${isAmountDisabled ? 'disabled' : ''}>
+                               ${isTransferChecked} onchange="handleTransferToggle(this)">
                     </div>
                 `;
 
                 const displayGameName = gameNameMap[order.game_id] || order.game_id || '第五人格(舊單)';
                 
                 let dynamicInfoHtml = '<div class="dynamic-info-container">';
-                let copyTextArr = [];
-                
                 if (order.account_info) {
                     let infoObj = {};
                     try { infoObj = typeof order.account_info === 'string' ? JSON.parse(order.account_info) : order.account_info; } 
@@ -439,29 +398,27 @@
                     for (const [key, val] of Object.entries(infoObj)) {
                         const displayKey = infoKeyMap[key] || key;
                         dynamicInfoHtml += `<span class="status-badge status-server">${displayKey}: <code>${val}</code></span>`;
-                        copyTextArr.push(`𓊆ྀི ${displayKey}𓊇ྀི：${val}`);
                     }
                 } else {
                     if (order.server_str) {
                         dynamicInfoHtml += `<span class="status-badge status-server">伺服器: <code>${order.server_str}</code></span>`;
-                        copyTextArr.push(`𓊆ྀི 伺服器𓊇ྀི：${order.server_str}`);
                     }
                     if (order.uid) {
                         dynamicInfoHtml += `<span class="status-badge status-server">UID: <code>${order.uid}</code></span>`;
-                        copyTextArr.push(`𓊆ྀི UID𓊇ྀི：${order.uid}`);
                     }
                 }
                 dynamicInfoHtml += '</div>';
 
+                // 移除鎖定按鈕，僅保留複製明細
                 const finalActionHtml = `
                     <div style="display: flex; flex-direction: column; gap: 6px;">
-                        ${actionBtnHtml}
                         <button class="btn-copy" onclick="copyOrderInfo(${order.id}, this, '${displayGameName}')">📋 複製明細</button>
                     </div>
                 `;
 
                 tr.innerHTML = `
                     <td><strong>${order.order_no || '---'}</strong></td>
+                    <td>${operatorBadge}</td>
                     <td>${transferHtml}</td>
                     <td><span class="status-badge game-badge">${displayGameName}</span></td> 
                     <td>${dynamicInfoHtml}</td>
@@ -471,13 +428,12 @@
                     <td style="white-space: nowrap;">
                         <span style="color: #d9383a; font-weight: 700;">$</span>
                         <input type="number" class="amount-input" data-id="${order.id}" value="${order.final_amount || 0}" 
-                               onchange="updateFinalAmount(this)" ${isAmountDisabled ? 'disabled' : ''}>
+                               onchange="updateFinalAmount(this)">
                     </td>
                     <td><span class="status-badge status-info">${order.payment_method || '---'}</span></td>
                     <td><span class="status-badge ${statusClass}">${order.realname_status || '待處理'}</span></td>
                     <td>${statusDropdownHtml}</td> 
                     <td>${completedAtHtml}</td>
-                    <td>${lockStatusHtml}</td>
                     <td>${finalActionHtml}</td>
                 `;
                 tbody.appendChild(tr);
@@ -504,11 +460,9 @@
         }
 
         function copyOrderInfo(orderId, btnElement, gameName) {
-            // 1. 根據 ID 找到對應的訂單資料
             const order = allOrdersData.find(o => o.id === orderId);
             if (!order) return;
         
-            // 2. 重新組合動態帳號資訊
             let dynamicText = '';
             if (order.account_info) {
                 let infoObj = {};
@@ -528,7 +482,6 @@
                 dynamicText = arr.join('\n');
             }
         
-            // 3. 組合最終要複製的文字
             const textToCopy = `𓊆ྀི 遊戲名稱𓊇ྀི：${gameName}
         ${dynamicText}
         𓊆ྀི 遊戲暱稱𓊇ྀི：${order.nickname || ''}
@@ -537,7 +490,6 @@
         𓊆ྀི FB個人主頁𓊇ྀི：${order.fb_link || '未提供'}
         𓊆ྀི 付款金額𓊇ྀི：${order.final_amount || 0}`;
         
-            // 4. 寫入剪貼簿與按鈕特效
             navigator.clipboard.writeText(textToCopy).then(() => {
                 const originalText = btnElement.innerText;
                 btnElement.innerText = '✅ 已複製';
@@ -559,8 +511,8 @@
                 return;
             }
 
-            // ✨ 1. 在表頭陣列補上「贈品數 (60)」
-            const headers = ["訂單編號", "是否轉單", "遊戲項目", "帳號詳細資訊", "玩家暱稱", "LINE/IG名稱", "FB連結", "購買品項", "贈品數 (60)", "實付金額", "訂單狀態", "完成/建立時間"];
+            // ✨ CSV 新增「業務來源」
+            const headers = ["訂單編號", "業務來源", "是否轉單", "遊戲項目", "帳號詳細資訊", "玩家暱稱", "LINE/IG名稱", "FB連結", "購買品項", "贈品數 (60)", "實付金額", "訂單狀態", "完成/建立時間"];
             const statusMap = { 'pending': '未付款', 'paid': '已付款', 'completed': '已完成', 'contacting': '找人中', 'cancelled': '已取消' };
 
             const rows = currentlyFilteredOrders.map(order => {
@@ -576,6 +528,7 @@
 
                 return [
                     `\t${order.order_no || '---'}`, 
+                    order.operator || "一般", // ✨ CSV 對應欄位
                     order.is_transfer ? "是" : "否",
                     displayGameName,
                     infoStr,      
@@ -583,7 +536,7 @@
                     order.line_name || "未綁定",
                     order.fb_link || "未提供",
                     order.item_name || "---",
-                    order.extra_gifts || 0, // ✨ 2. 在資料對應處補上 extra_gifts 變數
+                    order.extra_gifts || 0,
                     order.final_amount || 0,
                     statusMap[order.status] || order.status || "未付款",
                     order.completed_at || order.created_at || "---"
@@ -610,6 +563,7 @@
                 document.body.removeChild(link);
             }
         }
+
         async function handleTransferToggle(checkbox) {
             const orderId = checkbox.getAttribute('data-id');
             const itemName = checkbox.getAttribute('data-item') || '';
@@ -727,13 +681,6 @@
                 setTimeout(() => { inputElement.style.backgroundColor = 'transparent'; }, 1000);
                 fetchOrders(); 
             }
-        }
-
-        async function toggleLock(orderId, shouldLock) {
-            const currentOp = getCurrentOperator();
-            const updateData = shouldLock ? { is_locked: true, operator: currentOp } : { is_locked: false, operator: null };
-            const { error } = await supabaseClient.from('orders').update(updateData).eq('id', orderId);
-            if (error) alert('操作失敗：' + error.message); else fetchOrders();
         }
 
         async function updateOrderStatus(selectElement) {
