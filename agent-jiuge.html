@@ -51,18 +51,14 @@
         </div>
 
         <!-- 總計數據區塊 -->
-        <div class="stats-grid">
+        <div class="stats-grid" style="grid-template-columns: repeat(2, 1fr);">
             <div class="stat-card">
-                <div class="stat-title">💰 總收入 (客戶實付)</div>
+                <div class="stat-title">💰 總營收 (客戶實付)</div>
                 <div class="stat-value text-revenue" id="total-revenue">$0</div>
             </div>
             <div class="stat-card">
-                <div class="stat-title">📉 總支出 (代儲成本)</div>
-                <div class="stat-value text-expense" id="total-expense">$0</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-title">✨ 本月淨利潤</div>
-                <div class="stat-value text-profit" id="total-profit">$0</div>
+                <div class="stat-title">📝 本月有效單數</div>
+                <div class="stat-value" id="total-orders" style="color: #673ab7;">0 單</div>
             </div>
         </div>
 
@@ -75,8 +71,6 @@
                         <th>遊戲</th>
                         <th>購買商品</th>
                         <th>實收金額</th>
-                        <th>成本</th>
-                        <th>單筆利潤</th>
                         <th>當前狀態</th>
                     </tr>
                 </thead>
@@ -134,31 +128,25 @@
                 return alert('讀取資料失敗');
             }
 
-            let totalRev = 0, totalExp = 0, totalProf = 0;
+            // 把 totalExp, totalProf 換成 totalOrders
+            let totalRev = 0, totalOrders = 0; 
             const tbody = document.getElementById('order-list');
             tbody.innerHTML = '';
 
             if (data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #999; padding: 20px;">這個月目前還沒有訂單喔！</td></tr>';
+                // colspan 從 7 改成 5
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #999; padding: 20px;">這個月目前還沒有訂單喔！</td></tr>';
             } else {
                 data.forEach(order => {
                     const statusObj = statusMap[order.status] || { text: '未知', class: 'bg-pending' };
                     
-                    // 計算數據
                     const rev = order.final_amount || 0;
-                    const exp = order.sg_cost || 0;
                     
-                    // 只有在非取消且有成本的情況下才計算淨利 (依你的對帳邏輯可微調)
+                    // 只要不是取消單，就計算營收與單數
                     if (order.status !== 'cancelled') {
                         totalRev += rev;
-                        if (exp > 0) {
-                            totalExp += exp;
-                            totalProf += (rev - exp);
-                        }
+                        totalOrders++; // 單數 +1
                     }
-
-                    const profit = (exp > 0) ? (rev - exp) : 0;
-                    const profitColor = profit > 0 ? '#2e7d32' : (profit < 0 ? '#d9383a' : '#666');
 
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
@@ -169,8 +157,6 @@
                         <td>${order.game_id === 'identity-v' ? '第五人格' : (order.game_id === 'valorant' ? '特戰英豪' : order.game_id)}</td>
                         <td>${order.item_name}</td>
                         <td style="font-weight: bold; color: #1565c0;">$${rev}</td>
-                        <td>${exp > 0 ? '$' + exp : '<span style="color:#999; font-size:12px;">尚未結算</span>'}</td>
-                        <td style="font-weight: bold; color: ${profitColor};">${exp > 0 ? '$' + profit : '-'}</td>
                         <td><span class="status-badge ${statusObj.class}">${statusObj.text}</span></td>
                     `;
                     tbody.appendChild(tr);
@@ -179,8 +165,7 @@
 
             // 更新上方統計卡片
             document.getElementById('total-revenue').innerText = `$${totalRev.toLocaleString()}`;
-            document.getElementById('total-expense').innerText = `$${totalExp.toLocaleString()}`;
-            document.getElementById('total-profit').innerText = `$${totalProf.toLocaleString()}`;
+            document.getElementById('total-orders').innerText = `${totalOrders} 單`;
         }
 
         document.addEventListener('DOMContentLoaded', loadJiugeOrders);
