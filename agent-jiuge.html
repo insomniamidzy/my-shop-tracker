@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>九歌 - 專屬對帳控制台</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; background: #f5f5f7; margin: 0; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        
+        /* 標題與月份選擇 */
+        .header-zone { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; background: white; padding: 15px 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        h2 { color: #333; margin: 0; display: flex; align-items: center; gap: 10px; }
+        
+        /* 數據統計卡片 */
+        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 25px; }
+        .stat-card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); text-align: center; }
+        .stat-title { font-size: 14px; color: #666; font-weight: bold; margin-bottom: 10px; }
+        .stat-value { font-size: 28px; font-weight: bold; }
+        .text-revenue { color: #1565c0; } /* 收入藍色 */
+        .text-expense { color: #d9383a; } /* 支出紅色 */
+        .text-profit { color: #2e7d32; }  /* 利潤綠色 */
+
+        /* 表格樣式 (唯讀版) */
+        .table-container { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; font-size: 14px; }
+        th { background-color: #f9f9fb; color: #666; font-weight: bold; }
+        tr:hover { background-color: #f9f9fb; }
+        
+        /* 狀態標籤 (純顯示，不可點擊) */
+        .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; display: inline-block; }
+        .bg-pending { background-color: #ffebee; color: #c62828; }
+        .bg-paid { background-color: #fff8e1; color: #f57f17; }
+        .bg-processing { background-color: #e3f2fd; color: #1565c0; }
+        .bg-completed { background-color: #e8f5e9; color: #2e7d32; }
+        .bg-cancelled { background-color: #f5f5f5; color: #616161; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="header-zone">
+            <h2>💼 九歌 - 專屬對帳控制台</h2>
+            <div>
+                <label style="font-weight: bold; color: #555; margin-right: 10px;">📅 選擇結算月份：</label>
+                <!-- 預設選擇當前月份 -->
+                <input type="month" id="month-selector" style="padding: 6px; border-radius: 6px; border: 1px solid #ccc;" onchange="loadJiugeOrders()">
+            </div>
+        </div>
+
+        <!-- 總計數據區塊 -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-title">💰 總收入 (客戶實付)</div>
+                <div class="stat-value text-revenue" id="total-revenue">$0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-title">📉 總支出 (代儲成本)</div>
+                <div class="stat-value text-expense" id="total-expense">$0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-title">✨ 本月淨利潤</div>
+                <div class="stat-value text-profit" id="total-profit">$0</div>
+            </div>
+        </div>
+
+        <!-- 訂單明細 -->
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>訂單號 / 時間</th>
+                        <th>遊戲</th>
+                        <th>購買商品</th>
+                        <th>實收金額</th>
+                        <th>成本</th>
+                        <th>單筆利潤</th>
+                        <th>當前狀態</th>
+                    </tr>
+                </thead>
+                <tbody id="order-list">
+                    <tr><td colspan="7" style="text-align: center; color: #999;">資料載入中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // 替換成你的 Supabase 資訊
+        const SUPABASE_URL = 'https://sizlxeoconbuxkyrtnqd.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpemx4ZW9jb25idXhreXJ0bnFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3NTg4OTgsImV4cCI6MjA5NDMzNDg5OH0.Lu6f3HgJ_wsM-pLhK0j3tNbK7hu_1E19rj63iVn0qqI';
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        const statusMap = {
+            'pending': { text: '未付款', class: 'bg-pending' },
+            'paid': { text: '已付款', class: 'bg-paid' },
+            'processing': { text: '處理中', class: 'bg-processing' },
+            'completed': { text: '已完成', class: 'bg-completed' },
+            'cancelled': { text: '已取消', class: 'bg-cancelled' }
+        };
+
+        // 設定預設月份為本月
+        const date = new Date();
+        const currentMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        document.getElementById('month-selector').value = currentMonth;
+
+        function formatTime(isoString) {
+            if (!isoString) return '-';
+            const d = new Date(isoString);
+            return d.toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
+        }
+
+        async function loadJiugeOrders() {
+            const selectedMonth = document.getElementById('month-selector').value; // e.g., "2026-07"
+            if (!selectedMonth) return;
+
+            // 計算該月的第一天與最後一天
+            const startDate = new Date(selectedMonth + '-01T00:00:00Z').toISOString();
+            const endDate = new Date(new Date(selectedMonth + '-01').setMonth(new Date(selectedMonth + '-01').getMonth() + 1)).toISOString();
+
+            // ✨ 核心邏輯：只抓 operator 是 '九歌' 的單
+            const { data, error } = await supabase
+                .from('orders')
+                .select('*')
+                .eq('operator', '九歌')
+                .gte('created_at', startDate)
+                .lt('created_at', endDate)
+                .order('created_at', { ascending: false });
+
+            if (error) {
+                console.error(error);
+                return alert('讀取資料失敗');
+            }
+
+            let totalRev = 0, totalExp = 0, totalProf = 0;
+            const tbody = document.getElementById('order-list');
+            tbody.innerHTML = '';
+
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #999; padding: 20px;">這個月目前還沒有訂單喔！</td></tr>';
+            } else {
+                data.forEach(order => {
+                    const statusObj = statusMap[order.status] || { text: '未知', class: 'bg-pending' };
+                    
+                    // 計算數據
+                    const rev = order.final_amount || 0;
+                    const exp = order.sg_cost || 0;
+                    
+                    // 只有在非取消且有成本的情況下才計算淨利 (依你的對帳邏輯可微調)
+                    if (order.status !== 'cancelled') {
+                        totalRev += rev;
+                        if (exp > 0) {
+                            totalExp += exp;
+                            totalProf += (rev - exp);
+                        }
+                    }
+
+                    const profit = (exp > 0) ? (rev - exp) : 0;
+                    const profitColor = profit > 0 ? '#2e7d32' : (profit < 0 ? '#d9383a' : '#666');
+
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>
+                            <strong>${order.order_no}</strong><br>
+                            <span style="font-size: 12px; color: #888;">${formatTime(order.created_at)}</span>
+                        </td>
+                        <td>${order.game_id === 'identity-v' ? '第五人格' : (order.game_id === 'valorant' ? '特戰英豪' : order.game_id)}</td>
+                        <td>${order.item_name}</td>
+                        <td style="font-weight: bold; color: #1565c0;">$${rev}</td>
+                        <td>${exp > 0 ? '$' + exp : '<span style="color:#999; font-size:12px;">尚未結算</span>'}</td>
+                        <td style="font-weight: bold; color: ${profitColor};">${exp > 0 ? '$' + profit : '-'}</td>
+                        <td><span class="status-badge ${statusObj.class}">${statusObj.text}</span></td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+
+            // 更新上方統計卡片
+            document.getElementById('total-revenue').innerText = `$${totalRev.toLocaleString()}`;
+            document.getElementById('total-expense').innerText = `$${totalExp.toLocaleString()}`;
+            document.getElementById('total-profit').innerText = `$${totalProf.toLocaleString()}`;
+        }
+
+        document.addEventListener('DOMContentLoaded', loadJiugeOrders);
+    </script>
+</body>
+</html>
