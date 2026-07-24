@@ -15,7 +15,6 @@
         .nav-btn:hover { background: #d1d5db; }
         .nav-btn.active { background: #002D62; color: white; box-shadow: 0 4px 10px rgba(0, 45, 98, 0.2); }
 
-        /* ✨ 新增工具列 (對齊 index.html) */
         .header-zone { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
         h2 { color: #333; margin: 0; display: flex; align-items: center; gap: 10px; }
         .tools-zone { display: flex; gap: 15px; align-items: center; background: white; padding: 10px 15px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
@@ -49,6 +48,11 @@
         .btn-copy { background-color: #002D62; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; transition: 0.2s; font-weight: bold; }
         .btn-copy:hover { background-color: #004080; }
         .time-text { font-size: 12px; color: #888; display: block; margin-top: 4px; }
+        
+        /* 業務標籤樣式 */
+        .operator-badge { padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: bold; display: inline-block; white-space: nowrap; }
+        .badge-jiuge { background: #673ab7; color: white; }
+        .badge-normal { color: #999; }
     </style>
 </head>
 <body>
@@ -58,17 +62,15 @@
             <a href="index.html" class="nav-btn">➔ 回到 第五人格對帳單</a>
             <a href="other-games.html" class="nav-btn active">其他遊戲對帳單</a>
             
-            <!-- ✨ 新增的成本控制台按鈕 (利用 margin-left: auto 把它推到最右側) -->
             <a href="cost-admin.html" class="nav-btn" style="margin-left: auto; background-color: #8e44ad; color: white; box-shadow: 0 2px 5px rgba(142, 68, 173, 0.3);">
                 ⚙️ 成本與貨源控制台
             </a>
         </div>
 
-        <!-- ✨ 加入工具列區塊 -->
         <div class="header-zone">
             <h2>🎮 其他遊戲訂單管理</h2>
             <div class="tools-zone">
-                <input type="text" id="search-input" class="search-input" placeholder="🔍 搜尋單號 / 帳號資訊 / 遊戲..." oninput="renderActiveTabOrders()">
+                <input type="text" id="search-input" class="search-input" placeholder="🔍 搜尋單號/帳號/業務..." oninput="renderActiveTabOrders()">
                 <input type="date" id="date-filter" class="user-select" title="選擇單日結算" onchange="renderActiveTabOrders()">
                 
                 <select id="status-filter" class="user-select" onchange="renderActiveTabOrders()">
@@ -97,6 +99,7 @@
                 <thead>
                     <tr>
                         <th>訂單號 / 時間</th>
+                        <th>業務來源</th> <!-- ✨ 新增這欄 -->
                         <th>Riot ID</th>
                         <th>標籤 (Tag)</th>
                         <th>購買商品</th>
@@ -108,7 +111,7 @@
                     </tr>
                 </thead>
                 <tbody id="tbody-valorant">
-                    <tr><td colspan="9" style="text-align: center; color: #999;">尚未載入資料...</td></tr>
+                    <tr><td colspan="10" style="text-align: center; color: #999;">尚未載入資料...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -129,7 +132,6 @@
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpemx4ZW9jb25idXhreXJ0bnFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3NTg4OTgsImV4cCI6MjA5NDMzNDg5OH0.Lu6f3HgJ_wsM-pLhK0j3tNbK7hu_1E19rj63iVn0qqI';
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         
-        // ✨ 全域變數：儲存當前頁籤與資料，供篩選與匯出使用
         let currentActiveTab = 'valorant';
         let allValorantOrders = [];
         let currentlyFilteredValorant = [];
@@ -140,7 +142,6 @@
             return date.toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
         }
 
-        // 頁籤切換邏輯
         function switchTab(gameId) {
             currentActiveTab = gameId;
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
@@ -148,21 +149,17 @@
             event.target.classList.add('active');
             document.getElementById(`tab-${gameId}`).classList.add('active');
             
-            // 如果有做別的遊戲，就在這裡呼叫對應的 fetch 函式
             if (gameId === 'valorant') {
                 fetchValorantOrders();
             } else {
-                // 清空其他建置中頁籤的資料避免匯出錯誤
                 renderActiveTabOrders();
             }
         }
 
-        // 共用觸發器：當搜尋或篩選變更時觸發
         function renderActiveTabOrders() {
             if (currentActiveTab === 'valorant') {
                 renderValorantOrders();
             }
-            // 若未來新增 Roblox，可寫 else if (currentActiveTab === 'roblox') { renderRobloxOrders(); }
         }
 
         async function fetchValorantOrders() {
@@ -181,7 +178,6 @@
             renderValorantOrders();
         }
         
-        // ✨ 渲染並套用篩選邏輯
         function renderValorantOrders() {
             const tbody = document.getElementById('tbody-valorant');
             tbody.innerHTML = '';
@@ -191,11 +187,9 @@
             const dateFilter = document.getElementById('date-filter').value; 
         
             currentlyFilteredValorant = allValorantOrders.filter(order => {
-                // 1. 狀態篩選
                 const currentStatus = order.status || 'pending';
                 const matchStatus = (statusFilter === 'all') || (currentStatus === statusFilter);
 
-                // 2. 日期篩選 (以完成時間為主，若無則看建立時間)
                 let matchDate = true;
                 if (dateFilter) {
                     const dateString = order.completed_at || order.created_at;
@@ -208,20 +202,20 @@
                     }
                 }
 
-                // 3. 關鍵字篩選
                 let infoSearchStr = '';
                 if (order.account_info) {
                     const infoObj = typeof order.account_info === 'string' ? JSON.parse(order.account_info) : order.account_info;
                     infoSearchStr = Object.values(infoObj).join(' ');
                 }
-                const searchString = `${order.order_no} ${infoSearchStr} ${order.item_name} ${order.payment_method}`.toLowerCase();
+                // ✨ 搜尋字串加入 operator，讓你可以直接搜「九歌」
+                const searchString = `${order.order_no} ${infoSearchStr} ${order.item_name} ${order.payment_method} ${order.operator || ''}`.toLowerCase();
                 const matchSearch = searchString.includes(searchTerm);
 
                 return matchStatus && matchDate && matchSearch;
             });
 
             if (currentlyFilteredValorant.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; color: #999; padding: 20px;">找不到符合的訂單</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="10" style="text-align: center; color: #999; padding: 20px;">找不到符合的訂單</td></tr>';
                 return;
             }
 
@@ -235,18 +229,23 @@
                         tagline = info.tagline || '---';
                     } catch (e) {}
                 }
-
-                // 在迴圈內渲染表格時：
                 
                 const createdTime = formatTime(order.created_at);
                 const completedTime = order.completed_at ? formatTime(order.completed_at) : '-';
                 const currentStatus = order.status || 'pending';
                 const paymentMethod = order.payment_method || '未指定';
                 
-                // ✨ 新增邏輯：計算利潤 (如果 sg_cost 有值的話)
                 const cost = order.sg_cost || 0;
                 const profit = order.final_amount - cost;
-                const profitColor = profit >= 0 ? '#2e7d32' : '#d9383a'; // 賺錢變綠色，賠錢變紅色
+                const profitColor = profit >= 0 ? '#2e7d32' : '#d9383a'; 
+
+                // ✨ 新增邏輯：渲染業務徽章
+                let operatorBadge = '<span class="operator-badge badge-normal">一般</span>';
+                if (order.operator === '九歌') {
+                    operatorBadge = '<span class="operator-badge badge-jiuge">💼 九歌</span>';
+                } else if (order.operator) {
+                    operatorBadge = `<span class="operator-badge" style="background:#e8ecef; color:#495057; border: 1px solid #dee2e6;">${order.operator}</span>`;
+                }
                 
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
@@ -254,11 +253,17 @@
                         <strong>${order.order_no}</strong>
                         <span class="time-text">${createdTime}</span>
                     </td>
+                    <td>${operatorBadge}</td> <!-- ✨ 顯示業務來源 -->
                     <td><code style="color: #0071e3; background: #e8f4fd; padding: 4px; border-radius: 4px;">${riotId}</code></td>
                     <td><code style="color: #d9383a; background: #fdf3e8; padding: 4px; border-radius: 4px;">#${tagline}</code></td>
-                    <td>${order.item_name}</td>
-                    
-                    <!-- ✨ 修改這一段：加入成本與利潤顯示 -->
+                    <td>
+                        <div>${order.item_name}</div>
+                        ${order.extra_gifts > 0 ? 
+                            `<div style="font-size: 11px; color: #d9383a; font-weight: bold; margin-top: 4px;">
+                                🎁 補贈品: ${order.extra_gifts} 份
+                            </div>` : ''
+                        }
+                    </td>
                     <td>
                         <div style="font-weight: bold; color: #333;">售價: $${order.final_amount}</div>
                         <div style="font-size: 12px; color: #666;">成本: ${cost > 0 ? '$' + cost : '未計算'}</div>
@@ -287,23 +292,15 @@
         }
 
         async function updateOrderStatus(orderId, newStatus, selectElement) {
-            console.log(`[觸發更新] 訂單ID: ${orderId} (型別: ${typeof orderId}), 狀態: ${newStatus}`);
-            
             selectElement.className = `status-select ${newStatus}`;
             const updateData = { status: newStatus };
             
-            // ✨ 加入這行：強制將 orderId 轉為數字，並確保是用數字去比對
             const targetId = parseInt(orderId);
             
             if (newStatus === 'processing') {
-                // ✨ 改用 parseInt 比對
                 const order = allValorantOrders.find(o => parseInt(o.id) === targetId);
                 
-                console.log(`[檢查訂單] 找到訂單:`, order);
-                
                 if (order && !order.sg_cost) {
-                    console.log("進入計算區塊...");
-                    // ... 後面原本的計算邏輯保持不變 ...
                     let totalOrderCost = 0;
                     const items = order.item_name.split('+').map(i => i.trim());
                     
@@ -324,6 +321,24 @@
                             }
                         }
                     }
+
+                    if (order.extra_gifts && order.extra_gifts > 0) {
+                        let giftName = '';
+                        if (order.game_id === 'identity-v') giftName = '60 回聲';
+                        else if (order.game_id === 'valorant') giftName = '475 特務幣';
+
+                        if (giftName) {
+                            const { data: giftData } = await supabaseClient
+                                .from('sg_costs')
+                                .select('cost_price')
+                                .eq('item_name', giftName)
+                                .single();
+
+                            if (giftData) {
+                                totalOrderCost += (giftData.cost_price * order.extra_gifts);
+                            }
+                        }
+                    }
                     
                     if (totalOrderCost > 0) {
                         updateData.sg_cost = totalOrderCost;
@@ -331,7 +346,6 @@
                 }
             }
         
-            // 更新資料庫
             const { error } = await supabaseClient.from('orders').update(updateData).eq('id', targetId);
             
             if (error) {
@@ -343,7 +357,8 @@
         }
 
         function copyValorantOrder(orderId) {
-            const order = allValorantOrders.find(o => o.id === orderId);
+            const targetId = parseInt(orderId);
+            const order = allValorantOrders.find(o => parseInt(o.id) === targetId);
             if(!order) return;
             
             let riotId = '---', tagline = '---';
@@ -362,14 +377,14 @@
             });
         }
 
-        // ✨ 匯出 CSV 邏輯 (支援動態分頁)
         function exportToCSV() {
             if (currentActiveTab === 'valorant') {
                 if (currentlyFilteredValorant.length === 0) {
                     return alert("⚠️ 目前畫面中沒有特戰英豪資料可供匯出！");
                 }
                 
-                const headers = ["訂單編號", "建立時間", "完成時間", "Riot ID", "標籤", "購買商品", "實付金額", "付款方式", "訂單狀態"];
+                // ✨ 修改 CSV 標題陣列，加入業務來源
+                const headers = ["訂單編號", "業務來源", "建立時間", "完成時間", "Riot ID", "標籤", "購買商品", "實付金額", "付款方式", "訂單狀態"];
                 const statusMap = { 'pending': '未付款', 'paid': '已付款', 'processing': '處理中', 'completed': '已完成', 'cancelled': '已取消' };
 
                 const rows = currentlyFilteredValorant.map(order => {
@@ -384,6 +399,7 @@
                     
                     return [
                         `\t${order.order_no || '---'}`, 
+                        order.operator || "一般", // ✨ 寫入 operator 資料
                         formatTime(order.created_at),
                         formatTime(order.completed_at),
                         riotId,
