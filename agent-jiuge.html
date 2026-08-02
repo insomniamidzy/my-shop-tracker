@@ -19,8 +19,6 @@
         .stat-title { font-size: 14px; color: #666; font-weight: bold; margin-bottom: 10px; }
         .stat-value { font-size: 28px; font-weight: bold; }
         .text-revenue { color: #1565c0; } /* 收入藍色 */
-        .text-expense { color: #d9383a; } /* 支出紅色 */
-        .text-profit { color: #2e7d32; }  /* 利潤綠色 */
 
         /* 表格樣式 (唯讀版) */
         .table-container { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); overflow-x: auto; }
@@ -50,7 +48,7 @@
             </div>
         </div>
 
-        <!-- 總計數據區塊 -->
+        <!-- 總計數據區塊 (隱藏成本與利潤，改回 2 格顯示營收與單數) -->
         <div class="stats-grid" style="grid-template-columns: repeat(2, 1fr);">
             <div class="stat-card">
                 <div class="stat-title">💰 總營收 (客戶實付)</div>
@@ -75,7 +73,7 @@
                     </tr>
                 </thead>
                 <tbody id="order-list">
-                    <tr><td colspan="7" style="text-align: center; color: #999;">資料載入中...</td></tr>
+                    <tr><td colspan="5" style="text-align: center; color: #999;">資料載入中...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -128,13 +126,12 @@
                 return alert('讀取資料失敗');
             }
 
-            // 把 totalExp, totalProf 換成 totalOrders
             let totalRev = 0, totalOrders = 0; 
             const tbody = document.getElementById('order-list');
             tbody.innerHTML = '';
 
             if (data.length === 0) {
-                // colspan 從 7 改成 5
+                // colspan 設為 5
                 tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #999; padding: 20px;">這個月目前還沒有訂單喔！</td></tr>';
             } else {
                 data.forEach(order => {
