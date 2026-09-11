@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>商品價格與排程控制台</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 15px; background: #f5f5f7; margin: 0; }
+        .header { background: #002D62; color: white; padding: 15px 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
+        .header h2 { margin: 0; font-size: 18px; }
+        
+        .product-card { background: white; padding: 15px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .prod-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+        .prod-title { font-weight: bold; font-size: 16px; color: #333; }
+        .prod-sub { font-size: 12px; color: #888; background: #f0f0f0; padding: 2px 6px; border-radius: 4px; }
+        
+        .input-group { display: flex; flex-direction: column; margin-bottom: 10px; }
+        .input-group label { font-size: 13px; font-weight: bold; color: #555; margin-bottom: 4px; }
+        .input-group input { padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 15px; outline: none; }
+        .input-group input:focus { border-color: #0071e3; box-shadow: 0 0 0 2px rgba(0,113,227,0.2); }
+        
+        .schedule-zone { background: #fff8e1; padding: 10px; border-radius: 8px; border: 1px dashed #f5c6cb; margin-bottom: 15px; }
+        
+        .btn-save { background: #28a745; color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; width: 100%; cursor: pointer; font-size: 15px; transition: 0.2s; }
+        .btn-save:hover { background: #218838; }
+        .btn-clear { background: #6c757d; color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 14px; margin-top: 10px; width: 100%; }
+        
+        #loading { text-align: center; color: #666; padding: 20px; font-style: italic; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h2>⚙️ 商品定時調價控制台</h2>
+        <a href="index.html" style="color: white; font-size: 13px; text-decoration: none;">➔ 回首頁</a>
+    </div>
+
+    <div id="loading">讀取商品資料中，請稍候...</div>
+    <div id="product-list"></div>
+
+    <script>
+        // 替換為你的 Supabase 資訊
+        const SUPABASE_URL = 'https://sizlxeoconbuxkyrtnqd.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpemx4ZW9jb25idXhreXJ0bnFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3NTg4OTgsImV4cCI6MjA5NDMzNDg5OH0.Lu6f3HgJ_wsM-pLhK0j3tNbK7hu_1E19rj63iVn0qqI';
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        async function loadProducts() {
+            const { data, error } = await supabaseClient
+                .from('products')
+                .select('*')
+                .order('sort_order', { ascending: true });
+
+            if (error) {
+                alert('讀取商品失敗：' + error.message);
+                return;
+            }
+
+            const listDiv = document.getElementById('product-list');
+            listDiv.innerHTML = '';
+            document.getElementById('loading').style.display = 'none';
+
+            data.forEach(prod => {
+                // 將 UTC 時間轉換為 datetime-local 可以吃的格式 (YYYY-MM-DDTHH:mm)
+                let localTimeStr = '';
+                if (prod.scheduled_time) {
+                    const d = new Date(prod.scheduled_time);
+                    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+                    localTimeStr = d.toISOString().slice(0, 16);
+                }
+
+                const card = document.createElement('div');
+                card.className = 'product-card';
+                card.innerHTML = `
+                    <div class="prod-header">
+                        <span class="prod-title">💎 ${prod.item_name}</span>
+                        <span class="prod-sub">${prod.game_id === 'identity-v' ? '第五人格' : prod.game_id}</span>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label>💵 目前前台售價 (立即生效)</label>
+                        <input type="number" id="price-${prod.id}" value="${prod.price}">
+                    </div>
+
+                    <div class="schedule-zone">
+                        <div class="input-group">
+                            <label>⏰ 排程特價 (未來售價)</label>
+                            <input type="number" id="sched-price-${prod.id}" value="${prod.scheduled_price || ''}" placeholder="不設定請留空">
+                        </div>
+                        <div class="input-group">
+                            <label>📅 自動切換生效時間</label>
+                            <input type="datetime-local" id="sched-time-${prod.id}" value="${localTimeStr}">
+                        </div>
+                        <button class="btn-clear" onclick="clearSchedule('${prod.id}')">🗑️ 清除排程設定</button>
+                    </div>
+
+                    <button class="btn-save" id="btn-${prod.id}" onclick="saveProduct('${prod.id}')">💾 儲存修改</button>
+                `;
+                listDiv.appendChild(card);
+            });
+        }
+
+        async function saveProduct(id) {
+            const btn = document.getElementById(`btn-${id}`);
+            btn.innerText = '儲存中...';
+            btn.style.background = '#666';
+
+            const newPrice = document.getElementById(`price-${id}`).value;
+            const schedPrice = document.getElementById(`sched-price-${id}`).value;
+            const schedTime = document.getElementById(`sched-time-${id}`).value;
+
+            const updateData = {
+                price: newPrice ? parseInt(newPrice) : 0,
+                scheduled_price: schedPrice ? parseInt(schedPrice) : null,
+                scheduled_time: schedTime ? new Date(schedTime).toISOString() : null
+            };
+
+            const { error } = await supabaseClient.from('products').update(updateData).eq('id', id);
+
+            if (error) {
+                alert('儲存失敗：' + error.message);
+                btn.innerText = '💾 儲存修改';
+                btn.style.background = '#28a745';
+            } else {
+                btn.innerText = '✅ 儲存成功';
+                setTimeout(() => {
+                    btn.innerText = '💾 儲存修改';
+                    btn.style.background = '#28a745';
+                }, 2000);
+            }
+        }
+
+        async function clearSchedule(id) {
+            document.getElementById(`sched-price-${id}`).value = '';
+            document.getElementById(`sched-time-${id}`).value = '';
+            await saveProduct(id); // 直接幫你存檔
+        }
+
+        document.addEventListener('DOMContentLoaded', loadProducts);
+    </script>
+</body>
+</html>
