@@ -10,6 +10,15 @@
         .header { background: #002D62; color: white; padding: 15px 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
         .header h2 { margin: 0; font-size: 18px; }
         
+        /* ✨ 新增：統一控制中心樣式 */
+        .global-control { background: #e3f2fd; padding: 15px; border-radius: 12px; margin-bottom: 20px; border: 2px dashed #64b5f6; }
+        .global-control h3 { margin: 0 0 10px 0; font-size: 16px; color: #1565c0; display: flex; align-items: center; gap: 5px; }
+        .flex-buttons { display: flex; gap: 10px; margin-top: 10px; }
+        .btn-global-apply { flex: 1; background: #17a2b8; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; }
+        .btn-global-save { flex: 1; background: #28a745; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; box-shadow: 0 4px 6px rgba(40,167,69,0.2); }
+        .btn-global-apply:active { opacity: 0.8; }
+        .btn-global-save:active { opacity: 0.8; }
+
         .product-card { background: white; padding: 15px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
         .prod-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
         .prod-title { font-weight: bold; font-size: 16px; color: #333; }
@@ -22,8 +31,8 @@
         
         .schedule-zone { background: #fff8e1; padding: 10px; border-radius: 8px; border: 1px dashed #f5c6cb; margin-bottom: 15px; }
         
-        .btn-save { background: #28a745; color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; width: 100%; cursor: pointer; font-size: 15px; transition: 0.2s; }
-        .btn-save:hover { background: #218838; }
+        .btn-save { background: #e0e0e0; color: #333; border: none; padding: 10px; border-radius: 6px; font-weight: bold; width: 100%; cursor: pointer; font-size: 15px; transition: 0.2s; }
+        .btn-save:hover { background: #d5d5d5; }
         .btn-clear { background: #6c757d; color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 14px; margin-top: 10px; width: 100%; }
         
         #loading { text-align: center; color: #666; padding: 20px; font-style: italic; }
@@ -36,14 +45,30 @@
         <a href="index.html" style="color: white; font-size: 13px; text-decoration: none;">➔ 回首頁</a>
     </div>
 
+    <!-- ✨ 統一排程控制中心 -->
+    <div class="global-control">
+        <h3>🌟 統一排程控制中心</h3>
+        <div class="input-group">
+            <label>1. 選擇統一的「自動切換時間」</label>
+            <input type="datetime-local" id="global-time">
+        </div>
+        <div class="flex-buttons">
+            <button class="btn-global-apply" onclick="applyGlobalTime()">👇 2. 套用時間到下方商品</button>
+        </div>
+        <div class="flex-buttons">
+            <button class="btn-global-save" id="btn-global-save" onclick="saveAllProducts()">💾 3. 一鍵儲存所有修改</button>
+        </div>
+    </div>
+
     <div id="loading">讀取商品資料中，請稍候...</div>
     <div id="product-list"></div>
 
     <script>
-        // 替換為你的 Supabase 資訊
         const SUPABASE_URL = 'https://sizlxeoconbuxkyrtnqd.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpemx4ZW9jb25idXhreXJ0bnFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3NTg4OTgsImV4cCI6MjA5NDMzNDg5OH0.Lu6f3HgJ_wsM-pLhK0j3tNbK7hu_1E19rj63iVn0qqI';
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        let allProductIds = []; // 記住所有商品的 ID
 
         async function loadProducts() {
             const { data, error } = await supabaseClient
@@ -59,9 +84,11 @@
             const listDiv = document.getElementById('product-list');
             listDiv.innerHTML = '';
             document.getElementById('loading').style.display = 'none';
+            allProductIds = []; // 清空陣列
 
             data.forEach(prod => {
-                // 將 UTC 時間轉換為 datetime-local 可以吃的格式 (YYYY-MM-DDTHH:mm)
+                allProductIds.push(prod.id); // 收集 ID，讓一鍵套用可以使用
+
                 let localTimeStr = '';
                 if (prod.scheduled_time) {
                     const d = new Date(prod.scheduled_time);
@@ -91,19 +118,56 @@
                             <label>📅 自動切換生效時間</label>
                             <input type="datetime-local" id="sched-time-${prod.id}" value="${localTimeStr}">
                         </div>
-                        <button class="btn-clear" onclick="clearSchedule('${prod.id}')">🗑️ 清除排程設定</button>
+                        <button class="btn-clear" onclick="clearSchedule('${prod.id}')">🗑️ 單獨清除此排程</button>
                     </div>
 
-                    <button class="btn-save" id="btn-${prod.id}" onclick="saveProduct('${prod.id}')">💾 儲存修改</button>
+                    <!-- 單獨儲存按鈕改成灰色，引導使用上方的一鍵儲存 -->
+                    <button class="btn-save" id="btn-${prod.id}" onclick="saveProduct('${prod.id}', true)">單獨儲存此商品</button>
                 `;
                 listDiv.appendChild(card);
             });
         }
 
-        async function saveProduct(id) {
+        // ✨ 統一套用時間的邏輯
+        function applyGlobalTime() {
+            const globalTime = document.getElementById('global-time').value;
+            if (!globalTime) {
+                alert('⚠️ 請先在第一步選擇時間喔！');
+                return;
+            }
+            
+            // 把時間塞進每一個商品的格子裡
+            allProductIds.forEach(id => {
+                const timeInput = document.getElementById(`sched-time-${id}`);
+                if (timeInput) {
+                    timeInput.value = globalTime;
+                }
+            });
+        }
+
+        // ✨ 一鍵儲存所有商品的邏輯
+        async function saveAllProducts() {
+            const globalBtn = document.getElementById('btn-global-save');
+            globalBtn.innerText = '⏳ 正在同步所有商品至資料庫...';
+            globalBtn.style.background = '#666';
+            globalBtn.disabled = true;
+
+            // 利用 Promise.all 同時發送所有更新請求，速度超快
+            const promises = allProductIds.map(id => saveProduct(id, false)); 
+            await Promise.all(promises);
+
+            globalBtn.innerText = '✅ 所有修改已成功儲存！';
+            globalBtn.style.background = '#28a745';
+            setTimeout(() => {
+                globalBtn.innerText = '💾 3. 一鍵儲存所有修改';
+                globalBtn.disabled = false;
+            }, 3000);
+        }
+
+        // 原本的單筆儲存邏輯 (稍作修改以支援一鍵儲存)
+        async function saveProduct(id, showAlert = true) {
             const btn = document.getElementById(`btn-${id}`);
-            btn.innerText = '儲存中...';
-            btn.style.background = '#666';
+            if(showAlert) btn.innerText = '儲存中...';
 
             const newPrice = document.getElementById(`price-${id}`).value;
             const schedPrice = document.getElementById(`sched-price-${id}`).value;
@@ -118,14 +182,16 @@
             const { error } = await supabaseClient.from('products').update(updateData).eq('id', id);
 
             if (error) {
-                alert('儲存失敗：' + error.message);
-                btn.innerText = '💾 儲存修改';
-                btn.style.background = '#28a745';
-            } else {
+                console.error('儲存失敗：', error.message);
+                if(showAlert) alert('儲存失敗：' + error.message);
+            } else if (showAlert) {
                 btn.innerText = '✅ 儲存成功';
+                btn.style.background = '#28a745';
+                btn.style.color = 'white';
                 setTimeout(() => {
-                    btn.innerText = '💾 儲存修改';
-                    btn.style.background = '#28a745';
+                    btn.innerText = '單獨儲存此商品';
+                    btn.style.background = '#e0e0e0';
+                    btn.style.color = '#333';
                 }, 2000);
             }
         }
@@ -133,7 +199,7 @@
         async function clearSchedule(id) {
             document.getElementById(`sched-price-${id}`).value = '';
             document.getElementById(`sched-time-${id}`).value = '';
-            await saveProduct(id); // 直接幫你存檔
+            await saveProduct(id, true);
         }
 
         document.addEventListener('DOMContentLoaded', loadProducts);
