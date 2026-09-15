@@ -285,7 +285,9 @@
                 });
             }
             document.getElementById('total-revenue').innerText = `$${totalRev.toLocaleString()}`;
-            document.getElementById('total-profit').innerText = `$${totalProf.toLocaleString()}`;
+            // ✨ 計算九歌專屬的四成獎金 (四捨五入)
+            const jiugeBonus = Math.round(totalProf * 0.4);
+            document.getElementById('total-profit').innerText = `$${jiugeBonus.toLocaleString()}`;
         }
 
         // ================= 共用功能區 =================
