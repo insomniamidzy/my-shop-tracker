@@ -65,7 +65,7 @@
 
         <div class="stats-grid">
             <div class="stat-card">
-                <div class="stat-title">💰 總營收 (客戶實付)</div>
+                <div class="stat-title">✨ 本月獎金（隨匯率變動會有誤差）</div>
                 <div class="stat-value text-revenue" id="total-revenue">$0</div>
             </div>
             <div class="stat-card">
@@ -271,7 +271,9 @@
                 });
             }
             document.getElementById('total-revenue').innerText = `$${totalRev.toLocaleString()}`;
-            document.getElementById('total-profit').innerText = `$${totalProf.toLocaleString()}`;
+            // ✨ 計算 Mo Lin 專屬的 3.5 成獎金 (四捨五入)
+            const molinBonus = Math.round(totalProf * 0.35);
+            document.getElementById('total-profit').innerText = `$${molinBonus.toLocaleString()}`;
         }
 
         function copyOrderInfo(orderId, btnElement, gameName) {
