@@ -141,7 +141,6 @@
                     <th>贈品數 (60)</th>
                     <th>實付金額</th>
                     <th>付款方式</th>
-                    <th>實名狀態</th>
                     <th>訂單狀態</th>
                     <th>完成時間</th>
                     <th>動作</th>
@@ -336,12 +335,7 @@
                     });
                 }
 
-                let statusClass = 'status-info';
-                if (order.realname_status === '已實名') {
-                    statusClass = 'status-success';
-                } else if (order.realname_status === '未實名/需驗證' || order.realname_status === 'NEED_MANUAL_CHECK') {
-                    statusClass = 'status-warning';
-                }
+                
 
                 // ✨ 處理九歌/業務來源標籤
                 let operatorBadge = '<span style="color: #999;">一般</span>';
@@ -431,7 +425,6 @@
                                onchange="updateFinalAmount(this)">
                     </td>
                     <td><span class="status-badge status-info">${order.payment_method || '---'}</span></td>
-                    <td><span class="status-badge ${statusClass}">${order.realname_status || '待處理'}</span></td>
                     <td>${statusDropdownHtml}</td> 
                     <td>${completedAtHtml}</td>
                     <td>${finalActionHtml}</td>
