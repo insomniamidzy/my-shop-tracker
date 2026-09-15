@@ -70,7 +70,7 @@
                 <div class="stat-value text-revenue" id="total-revenue">$0</div>
             </div>
             <div class="stat-card">
-                <div class="stat-title">✨ 本月淨利潤（隨匯率變動會有誤差）</div>
+                <div class="stat-title">✨ 本月獎金（隨匯率改變有所誤差）</div>
                 <div class="stat-value text-profit" id="total-profit">$0</div>
             </div>
         </div>
@@ -152,7 +152,7 @@
                     }
                 }
             }
-            return Math.round(totalJpy * (2050 / 10200));
+            return Math.round(totalJpy * (2080 / 10200));
         }
 
         // ✨ 啟動時先去 Supabase 抓最新的前台售價表 (取代寫死的 retailPriceMap)
