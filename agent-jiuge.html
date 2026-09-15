@@ -107,37 +107,24 @@
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         let allOrdersData = [];
+        let dbPriceMap = {}; // ✨ 新增：用來存放從資料庫抓來的「最新前台售價」
 
         const gameNameMap = { 'identity-v': '第五人格', 'valorant': '特戰英豪', 'roblox': 'Roblox', 'speed-drivers': '極速領域' };
         const infoKeyMap = { 'uid': 'UID', 'server': '伺服器', 'riot_id': 'Riot ID', 'tagline': '標籤', 'account': '登入帳號', 'password': '密碼' };
 
-        // 🌟 核心：日幣成本對照表
+        // 🌟 核心：日幣成本對照表 (這裡只放「成本」，不放前台售價)
         const jpyCostMap = {
-            // 禮包系列
             "八週年特惠禮包 (956回聲+5精華)": 1220,
             "八週年優惠禮包1 (1009回聲+3精華)": 1840,
             "八週年優惠禮包2 (3448回聲+7精華)": 6100,
             "八週年優惠禮包3 (6918回聲+15精華)": 12000,
             "八週年禮包大全套 (四款全包)": 21160,
-            // 回聲系列
-            66: 120,
-            203: 370,
-            759: 1220,
-            1518: 2440,
-            2277: 3660,
-            3036: 4880,
-            3795: 6100,
-            5313: 8540,
-            6072: 9760,
-            7590: 12200,
-            15180: 24400,
-            22770: 36600,
-            30360: 48800
+            66: 120, 203: 370, 759: 1220, 1518: 2440, 2277: 3660, 3036: 4880, 
+            3795: 6100, 5313: 8540, 6072: 9760, 7590: 12200, 15180: 24400, 22770: 36600, 30360: 48800
         };
 
-        // 🌟 核心：自動解析商品並計算台幣成本
+        // 🌟 自動解析商品並計算台幣「成本」
         function calculateTwdCost(itemNameStr, gameId) {
-            // 目前只針對第五人格計算成本，其他遊戲若未建立表單則回傳 0 (需手動建檔)
             if (gameId && gameId !== 'identity-v') return 0;
             if (!itemNameStr) return 0;
 
@@ -145,32 +132,38 @@
             let totalJpy = 0;
 
             for (const item of items) {
-                // 抓取後面的乘號數量，例如 "759 回聲 x 2"
                 const qtyMatch = item.match(/[xX*]\s*(\d+)/);
                 const qty = qtyMatch ? parseInt(qtyMatch[1]) : 1;
                 const baseItemName = item.replace(/\s*[xX*]\s*\d+$/, '').trim();
 
-                // 判斷是否為禮包
                 if (jpyCostMap[baseItemName]) {
                     totalJpy += jpyCostMap[baseItemName] * qty;
                     continue;
                 }
 
-                // 判斷是否為一般回聲
                 const echoMatch = baseItemName.match(/(\d+)\s*回聲/);
                 if (echoMatch) {
                     const echoAmount = parseInt(echoMatch[1]);
                     if (jpyCostMap[echoAmount]) {
                         totalJpy += jpyCostMap[echoAmount] * qty;
                     } else if (echoAmount % 759 === 0) {
-                        // 防呆：如果遇到奇怪的倍數 (如 1518 回聲)，用 759 的成本等比計算
                         totalJpy += (echoAmount / 759) * jpyCostMap[759] * qty;
                     }
                 }
             }
-
-            // 匯率公式：日圓 * (2050 / 10200) 並四捨五入到整數台幣
             return Math.round(totalJpy * (2050 / 10200));
+        }
+
+        // ✨ 啟動時先去 Supabase 抓最新的前台售價表 (取代寫死的 retailPriceMap)
+        async function fetchLivePrices() {
+            const { data, error } = await supabaseClient.from('products').select('item_name, price');
+            if (data) {
+                data.forEach(prod => {
+                    // 移除空白當作 Key，避免比對時因為多打一個空格而抓不到
+                    const normalizedKey = prod.item_name.replace(/\s/g, '');
+                    dbPriceMap[normalizedKey] = prod.price;
+                });
+            }
         }
 
         const date = new Date();
@@ -204,30 +197,21 @@
             } else {
                 data.forEach(order => {
                     const rev = order.final_amount || 0;
-                    
-                    // ✨ 讓系統自動算成本 (取代舊的 order.sg_cost)
                     const cost = calculateTwdCost(order.item_name, order.game_id);
-                    const profit = cost > 0 ? (rev - cost) : 0; // 若無法辨識成本，利潤計為 0 避免失真
+                    const profit = cost > 0 ? (rev - cost) : 0; 
 
                     if (order.status !== 'cancelled') {
                         totalRev += rev;
                         if (cost > 0) totalProf += profit;
                     }
 
-                    // 成本與淨利欄位 HTML
                     let profitHtml = '<span style="color:#aaa;">---</span>';
                     if (cost > 0) {
                         const profitClass = profit > 0 ? 'profit-positive' : 'profit-negative';
                         const sign = profit > 0 ? '+' : '';
-                        profitHtml = `
-                            <div class="profit-box">
-                                <span class="text-cost">成本: $${cost}</span>
-                                <span class="${profitClass}">${sign}$${profit}</span>
-                            </div>
-                        `;
+                        profitHtml = `<div class="profit-box"><span class="text-cost">成本: $${cost}</span><span class="${profitClass}">${sign}$${profit}</span></div>`;
                     }
 
-                    // 以下為介面組合 (與總表完全相同)
                     let operatorBadge = '<span class="status-badge" style="background: #673ab7; color: white;">💼 九歌</span>';
                     const isTransferChecked = order.is_transfer ? 'checked' : '';
                     const transferHtml = `<input type="checkbox" data-id="${order.id}" data-item="${order.item_name}" ${isTransferChecked} onchange="handleTransferToggle(this)">`;
@@ -236,11 +220,9 @@
                     let dynamicInfoHtml = '<div class="dynamic-info-container">';
                     if (order.account_info) {
                         let infoObj = {};
-                        try { infoObj = typeof order.account_info === 'string' ? JSON.parse(order.account_info) : order.account_info; } 
-                        catch(e) {}
+                        try { infoObj = typeof order.account_info === 'string' ? JSON.parse(order.account_info) : order.account_info; } catch(e) {}
                         for (const [key, val] of Object.entries(infoObj)) {
-                            const displayKey = infoKeyMap[key] || key;
-                            dynamicInfoHtml += `<span class="status-badge status-server">${displayKey}: <code>${val}</code></span>`;
+                            dynamicInfoHtml += `<span class="status-badge status-server">${infoKeyMap[key] || key}: <code>${val}</code></span>`;
                         }
                     } else {
                         if (order.server_str) dynamicInfoHtml += `<span class="status-badge status-server">伺服器: <code>${order.server_str}</code></span>`;
@@ -248,14 +230,7 @@
                     }
                     dynamicInfoHtml += '</div>';
 
-                    const playerNameHtml = `
-                        <div class="player-info">
-                            <strong>🎮 ${order.nickname || '---'}</strong>
-                            <span class="line-name">💬 ${order.line_name || '未綁定'}</span>
-                            ${order.fb_link ? `<a href="${order.fb_link}" target="_blank" class="fb-link">🔗 查看 FB</a>` : ''}
-                        </div>
-                    `;
-
+                    const playerNameHtml = `<div class="player-info"><strong>🎮 ${order.nickname || '---'}</strong><span class="line-name">💬 ${order.line_name || '未綁定'}</span>${order.fb_link ? `<a href="${order.fb_link}" target="_blank" class="fb-link">🔗 查看 FB</a>` : ''}</div>`;
                     const currentStatus = order.status || 'pending';
                     const statusDropdownHtml = `
                         <select class="status-dropdown" data-id="${order.id}" onchange="updateOrderStatus(this)">
@@ -270,9 +245,7 @@
                     let completedAtHtml = '<span style="color: #ccc;">---</span>';
                     if (order.completed_at) {
                         const dateObj = new Date(order.completed_at);
-                        const monthDay = dateObj.toLocaleDateString('zh-TW', { month: '2-digit', day: '2-digit' });
-                        const time = dateObj.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
-                        completedAtHtml = `<div class="time-text"><span class="time-date">${monthDay}</span><br>${time}</div>`;
+                        completedAtHtml = `<div class="time-text"><span class="time-date">${dateObj.toLocaleDateString('zh-TW', { month: '2-digit', day: '2-digit' })}</span><br>${dateObj.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false })}</div>`;
                     }
 
                     const tr = document.createElement('tr');
@@ -285,11 +258,8 @@
                         <td>${playerNameHtml}</td> 
                         <td>${order.item_name || '---'}</td>
                         <td><span class="status-badge status-gift">🎁 +${order.extra_gifts || 0}</span></td>
-                        <td style="white-space: nowrap;">
-                            <span style="color: #d9383a; font-weight: 700;">$</span>
-                            <input type="number" class="amount-input" data-id="${order.id}" value="${order.final_amount || 0}" onchange="updateFinalAmount(this)">
-                        </td>
-                        <td>${profitHtml}</td> <!-- ✨ 利潤計算結果 -->
+                        <td style="white-space: nowrap;"><span style="color: #d9383a; font-weight: 700;">$</span><input type="number" class="amount-input" data-id="${order.id}" value="${order.final_amount || 0}" onchange="updateFinalAmount(this)"></td>
+                        <td>${profitHtml}</td>
                         <td><span class="status-badge status-info">${order.payment_method || '---'}</span></td>
                         <td>${statusDropdownHtml}</td> 
                         <td>${completedAtHtml}</td>
@@ -298,7 +268,6 @@
                     tbody.appendChild(tr);
                 });
             }
-
             document.getElementById('total-revenue').innerText = `$${totalRev.toLocaleString()}`;
             document.getElementById('total-profit').innerText = `$${totalProf.toLocaleString()}`;
         }
@@ -320,13 +289,7 @@
                 dynamicText = arr.join('\n');
             }
         
-            const textToCopy = `𓊆ྀི 遊戲名稱𓊇ྀི：${gameName}
-${dynamicText}
-𓊆ྀི 遊戲暱稱𓊇ྀི：${order.nickname || ''}
-𓊆ྀི 購買商品𓊇ྀི：${order.item_name || ''}
-𓊆ྀི IG/LINE名稱𓊇ྀི：${order.line_name || '未綁定'}
-𓊆ྀི FB個人主頁𓊇ྀི：${order.fb_link || '未提供'}
-𓊆ྀི 付款金額𓊇ྀི：${order.final_amount || 0}`;
+            const textToCopy = `𓊆ྀི 遊戲名稱𓊇ྀི：${gameName}\n${dynamicText}\n𓊆ྀི 遊戲暱稱𓊇ྀི：${order.nickname || ''}\n𓊆ྀི 購買商品𓊇ྀི：${order.item_name || ''}\n𓊆ྀི IG/LINE名稱𓊇ྀི：${order.line_name || '未綁定'}\n𓊆ྀི FB個人主頁𓊇ྀི：${order.fb_link || '未提供'}\n𓊆ྀི 付款金額𓊇ྀི：${order.final_amount || 0}`;
         
             navigator.clipboard.writeText(textToCopy).then(() => {
                 const originalText = btnElement.innerText;
@@ -336,8 +299,61 @@ ${dynamicText}
             }).catch(err => { alert('複製失敗，請檢查瀏覽器權限。'); });
         }
 
-        // 其餘狀態/金額更新功能保持不變
-        async function handleTransferToggle(checkbox) { /* 略，見原程式碼邏輯 */ }
+        // ✨ 全新升級的轉單切換邏輯 (全自動讀取 DB 原價 + 公式成本)
+        async function handleTransferToggle(checkbox) {
+            const orderId = checkbox.getAttribute('data-id');
+            const itemName = checkbox.getAttribute('data-item') || '';
+            const isTransfer = checkbox.checked;
+            let updatePayload = { is_transfer: isTransfer };
+
+            const items = itemName.split(' + ').map(i => i.trim());
+            let totalTransferPrice = 0, totalRetailPrice = 0, canAutoCalculate = true; 
+
+            for (const item of items) {
+                const qtyMatch = item.match(/[xX*]\s*(\d+)/);
+                const qty = qtyMatch ? parseInt(qtyMatch[1]) : 1;
+                const baseItemName = item.replace(/\s*[xX*]\s*\d+$/, '').trim();
+                const normalizedName = baseItemName.replace(/\s/g, ''); // 移除空格用來對照 DB
+
+                // 1. 計算轉單價格 (直接拿日幣公式算出的成本)
+                const itemCost = calculateTwdCost(baseItemName, 'identity-v');
+                if (itemCost > 0) {
+                    totalTransferPrice += itemCost * qty;
+                } else {
+                    canAutoCalculate = false;
+                }
+
+                // 2. 計算原價 (直接去剛剛建立的 dbPriceMap 找資料庫抓來的價格)
+                if (dbPriceMap[normalizedName]) {
+                    totalRetailPrice += dbPriceMap[normalizedName] * qty;
+                } else {
+                    canAutoCalculate = false;
+                }
+            }
+
+            if (isTransfer) {
+                if (canAutoCalculate && totalTransferPrice > 0) {
+                    if (confirm(`【轉單計算確認】\n系統將自動把金額修改為盤商成本價：NT$ ${totalTransferPrice}\n確定要執行嗎？`)) {
+                        updatePayload.final_amount = totalTransferPrice;
+                    } else { checkbox.checked = false; return; }
+                } else { alert('⚠️ 無法自動辨識成本，請手動修改。'); }
+            } else {
+                if (canAutoCalculate && totalRetailPrice > 0) {
+                    if (confirm(`【取消轉單】\n系統將自動把金額恢復為前台最新原價：NT$ ${totalRetailPrice}\n確定要執行嗎？`)) {
+                        updatePayload.final_amount = totalRetailPrice;
+                    } else { checkbox.checked = true; return; }
+                } else {
+                    if (!confirm(`系統找不到此商品的前台最新定價。\n取消後請您「手動」將金額改回原價。確定要取消嗎？`)) { checkbox.checked = true; return; }
+                }
+            }
+
+            checkbox.disabled = true;
+            const { error } = await supabaseClient.from('orders').update(updatePayload).eq('id', orderId);
+            if (error) { alert('更新失敗：' + error.message); checkbox.checked = !isTransfer; }
+            checkbox.disabled = false;
+            loadJiugeOrders(); 
+        }
+
         async function updateFinalAmount(inputElement) {
             const orderId = inputElement.getAttribute('data-id');
             const newAmount = parseInt(inputElement.value) || 0; 
@@ -367,7 +383,11 @@ ${dynamicText}
             loadJiugeOrders(); 
         }
 
-        document.addEventListener('DOMContentLoaded', loadJiugeOrders);
+        // ✨ 網頁載入時，確保先抓完資料庫價格，再載入訂單列表
+        document.addEventListener('DOMContentLoaded', async () => {
+            await fetchLivePrices();
+            loadJiugeOrders();
+        });
     </script>
 </body>
 </html>
