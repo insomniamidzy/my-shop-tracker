@@ -171,11 +171,26 @@
         document.getElementById('month-selector').value = currentMonth;
 
         async function loadJiugeOrders() {
-            const selectedMonth = document.getElementById('month-selector').value;
+            const selectedMonth = document.getElementById('month-selector').value; // 例如 "2026-09"
             if (!selectedMonth) return;
 
-            const startDate = new Date(selectedMonth + '-01T00:00:00Z').toISOString();
-            const endDate = new Date(new Date(selectedMonth + '-01').setMonth(new Date(selectedMonth + '-01').getMonth() + 1)).toISOString();
+            // ✨ 1. 拆解選擇的年份與月份
+            const [year, month] = selectedMonth.split('-');
+
+            // ✨ 2. 設定起始日：該月的 16 號 00:00:00 (台灣時間)
+            const startDateObj = new Date(`${year}-${month}-16T00:00:00+08:00`);
+            const startDate = startDateObj.toISOString();
+
+            // ✨ 3. 設定結束日：下個月的 16 號 00:00:00 (台灣時間)
+            const endDateObj = new Date(startDateObj);
+            endDateObj.setMonth(endDateObj.getMonth() + 1); // JS 會自動處理 12 月跨年的問題
+            const endDate = endDateObj.toISOString();
+
+            // ✨ 4. 在畫面上顯示確切的查詢區間，讓業務一目了然
+            const displayFormat = { year: 'numeric', month: '2-digit', day: '2-digit' };
+            const startStr = startDateObj.toLocaleDateString('zh-TW', displayFormat);
+            const endStr = endDateObj.toLocaleDateString('zh-TW', displayFormat);
+            document.getElementById('date-range-display').innerText = `結算區間：${startStr} ~ ${endStr}`;
 
             const { data, error } = await supabaseClient
                 .from('orders')
