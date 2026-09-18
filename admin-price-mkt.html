@@ -58,6 +58,11 @@
         <div class="flex-buttons">
             <button class="btn-global-save" id="btn-global-save" onclick="saveAllProducts()">💾 3. 一鍵儲存所有修改</button>
         </div>
+        <div class="flex-buttons">
+            <button onclick="clearAllSchedules()" style="background: #e74c3c; color: white; border: none; padding: 8px 15px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-left: 10px;">
+                🧹 一鍵清除殘留排程
+            </button>
+        </div>
     </div>
 
     <div id="loading">讀取商品資料中，請稍候...</div>
@@ -200,6 +205,47 @@
             document.getElementById(`sched-price-${id}`).value = '';
             document.getElementById(`sched-time-${id}`).value = '';
             await saveProduct(id, true);
+        }
+        // ✨ 清除排程功能
+        async function clearAllSchedules() {
+            // 再次確認，防呆機制
+            if (!confirm("確定要清除殘留的排程資料嗎？\n(這會將所有商品的排程時間與排程價格清空，不會影響目前已經生效的售價)")) {
+                return;
+            }
+        
+            const btn = event.target;
+            const originalText = btn.innerText;
+            btn.innerText = "清除中...";
+            btn.disabled = true;
+        
+            try {
+                // 🚨 這裡的 'products' 請確認是否為你的商品資料表名稱
+                // 🚨 這裡的 'scheduled_time' 和 'scheduled_price' 請替換成你資料庫實際使用的欄位名稱
+                const { error } = await supabaseClient
+                    .from('products')
+                    .update({ 
+                        scheduled_time: null, 
+                        scheduled_price: null 
+                    })
+                    .not('scheduled_time', 'is', null); // 只針對有排程資料的商品進行清空，節省效能
+        
+                if (error) throw error;
+        
+                alert("✅ 排程資料已成功清空！");
+                
+                // 重新讀取畫面上的商品列表 (請替換成你原本用來載入列表的函式，例如 loadProducts 或 fetchProducts)
+                if (typeof loadProducts === 'function') {
+                    loadProducts();
+                } else {
+                    window.location.reload(); // 如果找不到重載函式，就直接重新整理網頁
+                }
+            } catch (err) {
+                console.error("清除排程失敗:", err);
+                alert("❌ 清除失敗，請檢查權限或網路連線：" + err.message);
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
         }
 
         document.addEventListener('DOMContentLoaded', loadProducts);
