@@ -110,7 +110,11 @@
             
             <div class="tools-zone">
                 <input type="text" id="search-input" class="search-input" placeholder="🔍 搜尋單號 / 帳號資訊 / 暱稱..." oninput="renderOrders()">
-                <input type="date" id="date-filter" class="user-select" title="選擇單日結算" onchange="renderOrders()">
+                <div style="display: flex; align-items: center; gap: 5px;">
+                    <input type="date" id="start-date" class="user-select" title="起始日期" onchange="renderOrders()">
+                    <span style="color: #666; font-size: 14px;">至</span>
+                    <input type="date" id="end-date" class="user-select" title="結束日期" onchange="renderOrders()">
+                </div>
 
                 <select id="status-filter" class="user-select" onchange="renderOrders()">
                     <option value="all">👁️ 全部狀態</option>
@@ -237,7 +241,9 @@
         function renderOrders() {
             const statusFilter = document.getElementById('status-filter').value;
             const searchTerm = document.getElementById('search-input').value.toLowerCase();
-            const dateFilter = document.getElementById('date-filter').value; 
+            // 替換這裡
+            const startDateStr = document.getElementById('start-date').value;
+            const endDateStr = document.getElementById('end-date').value;
             
             const tbody = document.getElementById('orders-body');
             tbody.innerHTML = ''; 
@@ -271,12 +277,15 @@
                 const matchSearch = searchString.includes(searchTerm);
                 
                 let matchDate = true;
-                if (dateFilter) {
+                if (startDateStr || endDateStr) {
                     const dateString = order.completed_at || order.created_at;
                     if (dateString) {
                         const localDate = new Date(dateString);
+                        // 轉換為 YYYY-MM-DD 格式的台灣時間進行比對
                         const taiwanDateStr = localDate.toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
-                        matchDate = (taiwanDateStr === dateFilter);
+                        
+                        if (startDateStr && taiwanDateStr < startDateStr) matchDate = false;
+                        if (endDateStr && taiwanDateStr > endDateStr) matchDate = false;
                     } else {
                         matchDate = false;
                     }
@@ -451,7 +460,13 @@
             document.getElementById('stat-points').innerText = totalPoints.toLocaleString() + ' 點'; 
             document.getElementById('stat-amount').innerText = '$' + totalCompletedAmount.toLocaleString();
             
-            document.getElementById('dash-month-label').innerText = dateFilter ? `(${dateFilter.replace(/-/g, '/')})` : '(全部時間)';
+            // 替換原本的 dash-month-label 更新
+            let dateLabel = '(全部時間)';
+            if (startDateStr && endDateStr) dateLabel = `(${startDateStr.replace(/-/g, '/')} - ${endDateStr.replace(/-/g, '/')})`;
+            else if (startDateStr) dateLabel = `(${startDateStr.replace(/-/g, '/')} 起)`;
+            else if (endDateStr) dateLabel = `(至 ${endDateStr.replace(/-/g, '/')})`;
+            
+            document.getElementById('dash-month-label').innerText = dateLabel;
             document.getElementById('stats-dashboard').style.display = 'block';
         }
 
@@ -545,8 +560,16 @@
 
             const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
             
-            const dateFilter = document.getElementById('date-filter').value;
-            const fileName = dateFilter ? `代充對帳單_${dateFilter}.csv` : `代充對帳單_全部儲存.csv`;
+            // 替換原本的 dateFilter 與 fileName
+            const startDateStr = document.getElementById('start-date').value;
+            const endDateStr = document.getElementById('end-date').value;
+            
+            let fileDateSuffix = '全部時間';
+            if (startDateStr && endDateStr) fileDateSuffix = `${startDateStr}_至_${endDateStr}`;
+            else if (startDateStr) fileDateSuffix = `${startDateStr}起`;
+            else if (endDateStr) fileDateSuffix = `至${endDateStr}`;
+            
+            const fileName = `代充對帳單_${fileDateSuffix}.csv`;
 
             const link = document.createElement("a");
             if (link.download !== undefined) { 
