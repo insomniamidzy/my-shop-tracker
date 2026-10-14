@@ -351,8 +351,10 @@
                 if (order.operator === '九歌') {
                     operatorBadge = '<span class="status-badge" style="background: #673ab7; color: white;">💼 九歌</span>';
                 } else if (order.operator === 'Mo Lin') {
-                    // ✨ 新增這行：讓 Mo Lin 也有專屬的深藍綠色標籤
                     operatorBadge = '<span class="status-badge" style="background: #00796b; color: white;">💼 Mo Lin</span>';
+                } else if (order.operator === 'Sherro') {
+                    // ✨ 新增這行：設定新業務的專屬標籤顏色
+                    operatorBadge = '<span class="status-badge" style="background: #e65100; color: white;">💼 Sherro</span>';
                 } else if (order.operator) {
                     operatorBadge = `<span class="status-badge status-server">${order.operator}</span>`;
                 }
