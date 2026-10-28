@@ -55,6 +55,28 @@
         .amount-input:hover { border-color: #ddd; background: #fff; }
         .amount-input:focus { border-color: #0071e3; background: #fff; box-shadow: 0 0 0 2px rgba(0,113,227,0.2); }
         .amount-input::-webkit-outer-spin-button, .amount-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+        /* ✨ 新增：實付金額確認按鈕的樣式 */
+        .btn-save-amount {
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .btn-save-amount:hover {
+            background: #218838;
+        }
+        .btn-save-amount:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
         
         .transfer-checkbox { width: 18px; height: 18px; cursor: pointer; accent-color: #8e44ad; }
 
@@ -433,10 +455,13 @@
                     <td>${playerNameHtml}</td> 
                     <td>${order.item_name || '---'}</td>
                     <td><span class="status-badge status-gift">🎁 +${order.extra_gifts || 0}</span></td>
-                    <td style="white-space: nowrap;">
-                        <span style="color: #d9383a; font-weight: 700;">$</span>
-                        <input type="number" class="amount-input" data-id="${order.id}" value="${order.final_amount || 0}" 
-                               onchange="updateFinalAmount(this)">
+                    <!-- ✨ 改為附帶確認按鈕的組合 -->
+                    <td>
+                        <div style="display: flex; align-items: center; gap: 4px;">
+                            <span style="color: #d9383a; font-weight: 700;">$</span>
+                            <input type="number" class="amount-input" id="amount-input-${order.id}" value="${order.final_amount || 0}">
+                            <button class="btn-save-amount" onclick="updateFinalAmount('${order.id}')" title="確認修改">💾</button>
+                        </div>
                     </td>
                     <td><span class="status-badge status-info">${order.payment_method || '---'}</span></td>
                     <td>${statusDropdownHtml}</td> 
@@ -686,10 +711,22 @@
             fetchOrders(); 
         }
 
-        async function updateFinalAmount(inputElement) {
-            const orderId = inputElement.getAttribute('data-id');
+        async function updateFinalAmount(orderId) {
+            // 從我們剛才設定的 ID 抓取該輸入框
+            const inputElement = document.getElementById(`amount-input-${orderId}`);
             const newAmount = parseInt(inputElement.value) || 0; 
+            const btnElement = inputElement.nextElementSibling; // 抓取旁邊的儲存按鈕
+
+            // ✨ 加入防呆確認視窗
+            if (!confirm(`【金額修改確認】\n確定要將這筆訂單的實付金額修改為 $${newAmount} 嗎？`)) {
+                renderOrders(); // 如果按取消，重新渲染表格讓數值恢復原狀
+                return;
+            }
+
             inputElement.style.opacity = '0.5';
+            const originalBtnText = btnElement.innerText;
+            btnElement.innerText = '⏳';
+            btnElement.disabled = true;
 
             const { error } = await supabaseClient.from('orders').update({ final_amount: newAmount }).eq('id', orderId);
 
@@ -699,7 +736,14 @@
             } else {
                 inputElement.style.opacity = '1';
                 inputElement.style.backgroundColor = '#e3fbe3';
-                setTimeout(() => { inputElement.style.backgroundColor = 'transparent'; }, 1000);
+                btnElement.innerText = '✅';
+                
+                setTimeout(() => { 
+                    inputElement.style.backgroundColor = 'transparent'; 
+                    btnElement.innerText = originalBtnText;
+                    btnElement.disabled = false;
+                }, 1000);
+                
                 fetchOrders(); 
             }
         }
