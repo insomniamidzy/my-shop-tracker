@@ -143,6 +143,7 @@
                     <option value="pending">🟡 只看未付款</option>
                     <option value="paid">🟢 只看已付款</option>
                     <option value="completed">✅ 只看已完成</option>
+                    <option value="merged">🔗 合併副單 (0元)</option>
                     <option value="contacting">🕵️ 找人中</option>
                     <option value="cancelled">🔴 只看已取消</option>
                 </select>
@@ -245,7 +246,7 @@
 
             const { data, error } = await supabaseClient
                 .from('orders')
-                .select('id, order_no, game_id, account_info, department, uid, nickname, server_str, realname_status, item_name, final_amount, payment_method, extra_gifts, operator, status, line_name, completed_at, created_at, is_transfer, fb_link')
+                .select('id, order_no, game_id, account_info, department, uid, nickname, server_str, realname_status, item_name, final_amount, payment_method, extra_gifts, operator, status, line_name, completed_at, created_at, is_transfer, fb_link, master_order, original_amount')
                 .or('game_id.eq.identity-v,game_id.is.null') 
                 .order('id', { ascending: false });
 
@@ -387,6 +388,8 @@
                         <option value="pending" ${currentStatus === 'pending' ? 'selected' : ''}>🟡 未付款</option>
                         <option value="paid" ${currentStatus === 'paid' ? 'selected' : ''}>🟢 已付款</option>
                         <option value="completed" ${currentStatus === 'completed' ? 'selected' : ''}>✅ 已完成</option>
+                        <!-- ✨ 新增這行：給業務選擇的合併狀態 -->
+                        <option value="merged" ${currentStatus === 'merged' ? 'selected' : ''}>🔗 合併副單</option>
                         <option value="contacting" ${currentStatus === 'contacting' ? 'selected' : ''}>🕵️ 找人中</option> 
                         <option value="cancelled" ${currentStatus === 'cancelled' ? 'selected' : ''}>🔴 已取消</option>
                     </select>
@@ -447,7 +450,10 @@
                 `;
 
                 tr.innerHTML = `
-                    <td><strong>${order.order_no || '---'}</strong></td>
+                    <td>
+                        <strong>${order.order_no || '---'}</strong>
+                        ${order.master_order ? `<br><span style="font-size: 11px; background: #eee; padding: 2px 4px; border-radius: 4px; color: #666; display: inline-block; margin-top: 4px;">🔗 併入: ${order.master_order}</span>` : ''}
+                    </td>
                     <td>${operatorBadge}</td>
                     <td>${transferHtml}</td>
                     <td><span class="status-badge game-badge">${displayGameName}</span></td> 
@@ -612,103 +618,27 @@
 
         async function handleTransferToggle(checkbox) {
             const orderId = checkbox.getAttribute('data-id');
-            const itemName = checkbox.getAttribute('data-item') || '';
             const isTransfer = checkbox.checked;
 
-            let updatePayload = { is_transfer: isTransfer };
-
-            const retailPriceMap = {
-                759: 265, 1518: 530, 2277: 780, 3036: 1000, 3795: 1280,
-                5313: 1785, 6072: 2020, 7590: 2475, 15180: 4950,
-                22770: 7400, 30360: 9800
-            };
-
-            const eventPriceMap = {
-                "八週年特惠禮包 (956回聲+5精華)": { transfer: 245, retail: 260 },
-                "八週年優惠禮包1 (1009回聲+3精華)": { transfer: 400, retail: 430 },
-                "八週年優惠禮包2 (3448回聲+7精華)": { transfer: 1220, retail: 1250 },
-                "八週年優惠禮包3 (6918回聲+15精華)": { transfer: 2375, retail: 2400 },
-                "八週年禮包大全套 (四款全包)": { transfer: 4220, retail: 4250 }
-            };
-
-            const items = itemName.split(' + ').map(i => i.trim());
-            
-            let totalTransferPrice = 0; 
-            let totalRetailPrice = 0;   
-            let canAutoCalculate = true; 
-
-            for (const item of items) {
-                const qtyMatch = item.match(/[xX*]\s*(\d+)/);
-                const qty = qtyMatch ? parseInt(qtyMatch[1]) : 1;
-                const baseItemName = item.replace(/\s*[xX*]\s*\d+$/, '').trim();
-
-                if (baseItemName.includes('八週年')) {
-                    if (eventPriceMap[baseItemName]) {
-                        totalTransferPrice += eventPriceMap[baseItemName].transfer * qty; 
-                        totalRetailPrice += eventPriceMap[baseItemName].retail * qty;  
-                    } else {
-                        canAutoCalculate = false;
-                    }
-                    continue; 
-                }
-
-                const echoMatch = item.match(/(\d+)\s*回聲/);
-                if (echoMatch) {
-                    const baseEcho = parseInt(echoMatch[1]);
-                    
-                    if (baseEcho % 759 === 0) {
-                        totalTransferPrice += (baseEcho / 759) * 250 * qty;
-                    } else {
-                        canAutoCalculate = false; 
-                    }
-
-                    if (retailPriceMap[baseEcho]) {
-                        totalRetailPrice += retailPriceMap[baseEcho] * qty;
-                    } else {
-                        canAutoCalculate = false;
-                    }
-                } else {
-                    canAutoCalculate = false;
-                }
-            }
-
-            if (isTransfer) {
-                if (canAutoCalculate && totalTransferPrice > 0) {
-                    if (confirm(`【轉單計算確認】\n商品：${itemName}\n\n系統將自動計算所有組合並把金額修改為轉單成本：NT$ ${totalTransferPrice}\n確定要執行轉單嗎？`)) {
-                        updatePayload.final_amount = totalTransferPrice;
-                    } else {
-                        checkbox.checked = false;
-                        return; 
-                    }
-                } else {
-                    alert('⚠️ 無法自動辨識組合內所有品項的轉單成本，請手動修改實付金額。');
-                }
-            } else {
-                if (canAutoCalculate && totalRetailPrice > 0) {
-                    if (confirm(`【取消轉單】\n系統將自動把金額恢復為所有組合的總原價：NT$ ${totalRetailPrice}\n確定要執行嗎？`)) {
-                        updatePayload.final_amount = totalRetailPrice;
-                    } else {
-                        checkbox.checked = true;
-                        return;
-                    }
-                } else {
-                    if (!confirm(`【取消轉單】\n系統找不到此組合商品對應的預設原價。\n取消後請您「手動」將實付金額改回原本的定價。確定要取消嗎？`)) {
-                        checkbox.checked = true;
-                        return; 
-                    }
-                }
-            }
-
+            // 鎖定按鈕避免連點
             checkbox.disabled = true;
-            const { error } = await supabaseClient.from('orders').update(updatePayload).eq('id', orderId);
-            
+
+            // 直接將 is_transfer 的狀態寫入資料庫
+            const { error } = await supabaseClient
+                .from('orders')
+                .update({ is_transfer: isTransfer })
+                .eq('id', orderId);
+                
             if (error) {
-                alert('更新失敗，請檢查網路：' + error.message);
+                alert('轉單狀態更新失敗，請檢查網路：' + error.message);
+                // 如果失敗，把畫面上的勾勾退回去
                 checkbox.checked = !isTransfer; 
             }
             
+            // 解除鎖定
             checkbox.disabled = false;
-            fetchOrders(); 
+            
+            // (選用) 可以在這裡呼叫 fetchOrders() 讓畫面刷新，但純勾選其實不刷新也沒關係
         }
 
         async function updateFinalAmount(orderId) {
@@ -752,15 +682,109 @@
             const orderId = selectElement.getAttribute('data-id');
             const newStatus = selectElement.value;
             const statusText = selectElement.options[selectElement.selectedIndex].text;
+            
+            // 找出這筆訂單目前的完整資料
+            const currentOrder = allOrdersData.find(o => o.id == orderId);
 
-            if (!confirm(`確定要將這筆訂單改為「${statusText}」嗎？`)) { renderOrders(); return; }
+            if (!confirm(`確定要將這筆訂單改為「${statusText}」嗎？`)) { 
+                renderOrders(); 
+                return; 
+            }
 
             const updatePayload = { status: newStatus };
-            if (newStatus === 'completed') updatePayload.completed_at = new Date().toISOString();
-            else updatePayload.completed_at = null;
+            
+            if (newStatus === 'completed') {
+                updatePayload.completed_at = new Date().toISOString();
+            } else {
+                updatePayload.completed_at = null;
+            }
 
+            // ✨ 終極進化：合併副單並自動將金額加到主單
+            if (newStatus === 'merged') {
+                const masterNo = prompt('【設定合併副單】\n系統將自動把此單歸零，並「加總到主單」。\n\n⚠️ 請輸入它所跟隨的「主單號碼」：');
+                
+                if (masterNo === null || masterNo.trim() === '') {
+                    alert('❌ 必須輸入主單號碼才能合併！已取消動作。');
+                    renderOrders(); 
+                    return;
+                }
+
+                const cleanMasterNo = masterNo.trim();
+                
+                // 防呆：不能輸入自己的單號
+                if (cleanMasterNo === currentOrder.order_no) {
+                    alert('❌ 主單號碼不能是自己！');
+                    renderOrders();
+                    return;
+                }
+
+                // 1. 去資料庫尋找這張主單
+                const { data: masterData, error: masterErr } = await supabaseClient
+                    .from('orders')
+                    .select('id, final_amount')
+                    .eq('order_no', cleanMasterNo)
+                    .single();
+                    
+                if (masterErr || !masterData) {
+                    alert('❌ 找不到此主單號碼，請確認是否輸入正確！');
+                    renderOrders();
+                    return;
+                }
+
+                // 2. 計算主單的新金額 (主單原本金額 + 這張副單的金額)
+                const currentAmount = parseInt(currentOrder.final_amount) || 0;
+                const newMasterAmount = (parseInt(masterData.final_amount) || 0) + currentAmount;
+
+                // 3. 更新主單金額寫入資料庫
+                await supabaseClient.from('orders')
+                    .update({ final_amount: newMasterAmount })
+                    .eq('id', masterData.id);
+
+                // 4. 設定副單自己：備份原價、歸零、綁定主單
+                updatePayload.original_amount = currentAmount;
+                updatePayload.final_amount = 0;
+                updatePayload.master_order = cleanMasterNo;
+                
+                alert(`✅ 合併成功！\n副單已歸零，主單（${cleanMasterNo}）金額已自動升級為 $${newMasterAmount}`);
+
+            } else {
+                // ✨ 自動還原：如果從合併副單改回其他狀態，自動從主單扣回金額
+                if (currentOrder.status === 'merged' && currentOrder.master_order) {
+                    
+                    // 去資料庫找原來綁定的主單
+                    const { data: masterData } = await supabaseClient
+                        .from('orders')
+                        .select('id, final_amount')
+                        .eq('order_no', currentOrder.master_order)
+                        .single();
+                        
+                    if (masterData && currentOrder.original_amount != null) {
+                        // 將主單扣回原本這張副單的錢
+                        const restoredMasterAmount = (parseInt(masterData.final_amount) || 0) - parseInt(currentOrder.original_amount);
+                        await supabaseClient.from('orders')
+                            .update({ final_amount: restoredMasterAmount < 0 ? 0 : restoredMasterAmount })
+                            .eq('id', masterData.id);
+                    }
+
+                    // 還原副單自己
+                    if (currentOrder.original_amount != null) {
+                        updatePayload.final_amount = currentOrder.original_amount;
+                        updatePayload.original_amount = null; // 清空備份
+                    }
+                    updatePayload.master_order = null; // 清空綁定
+                    
+                    alert('【解除合併】\n已解除主單綁定，副單恢復原價，並已自動從主單扣除該金額！');
+                }
+            }
+
+            // 更新自己(副單)的狀態與金額
             const { error } = await supabaseClient.from('orders').update(updatePayload).eq('id', orderId);
-            if (error) alert('狀態更新失敗：' + error.message); 
+            
+            if (error) {
+                alert('狀態更新失敗：' + error.message); 
+            }
+            
+            // 重新抓取資料，主副單的畫面數字會瞬間更新
             fetchOrders(); 
         }
 
