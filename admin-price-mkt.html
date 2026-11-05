@@ -91,18 +91,42 @@
             document.getElementById('loading').style.display = 'none';
             allProductIds = []; // 清空陣列
 
-            data.forEach(prod => {
-                allProductIds.push(prod.id); // 收集 ID，讓一鍵套用可以使用
+            const now = new Date(); // 取得現在時間
 
+            data.forEach(prod => {
+                allProductIds.push(prod.id); 
+
+                let currentRealPrice = prod.price; // 預設顯示原價
                 let localTimeStr = '';
+                
+                // ✨ 核心邏輯：檢查排程時間是否已經到了
                 if (prod.scheduled_time) {
-                    const d = new Date(prod.scheduled_time);
-                    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-                    localTimeStr = d.toISOString().slice(0, 16);
+                    const schedTime = new Date(prod.scheduled_time);
+                    
+                    if (now >= schedTime) {
+                        // 🚨 時間已到！直接把顯示價格換成特價
+                        currentRealPrice = prod.scheduled_price;
+                        
+                        // 順手牽羊：在背景發送請求，幫資料庫把「排程價格」正式變成「現在價格」，並清空排程
+                        supabaseClient.from('products').update({
+                            price: prod.scheduled_price,
+                            scheduled_price: null,
+                            scheduled_time: null
+                        }).eq('id', prod.id);
+                        
+                        // 既然時間已經到了被我們轉正，畫面上的排程欄位就清空，避免擾亂視覺
+                        prod.scheduled_price = '';
+                        prod.scheduled_time = null;
+                    } else {
+                        // 時間還沒到，正常轉換時區顯示排程時間
+                        schedTime.setMinutes(schedTime.getMinutes() - schedTime.getTimezoneOffset());
+                        localTimeStr = schedTime.toISOString().slice(0, 16);
+                    }
                 }
 
                 const card = document.createElement('div');
                 card.className = 'product-card';
+                // 注意下方的 value 改成了 currentRealPrice
                 card.innerHTML = `
                     <div class="prod-header">
                         <span class="prod-title">💎 ${prod.item_name}</span>
@@ -111,7 +135,8 @@
                     
                     <div class="input-group">
                         <label>💵 目前前台售價 (立即生效)</label>
-                        <input type="number" id="price-${prod.id}" value="${prod.price}">
+                        <!-- 綁上 data-original-price，配合我們稍早修改的 saveProduct 防呆 -->
+                        <input type="number" id="price-${prod.id}" value="${currentRealPrice}" data-original-price="${currentRealPrice}">
                     </div>
 
                     <div class="schedule-zone">
@@ -126,7 +151,6 @@
                         <button class="btn-clear" onclick="clearSchedule('${prod.id}')">🗑️ 單獨清除此排程</button>
                     </div>
 
-                    <!-- 單獨儲存按鈕改成灰色，引導使用上方的一鍵儲存 -->
                     <button class="btn-save" id="btn-${prod.id}" onclick="saveProduct('${prod.id}', true)">單獨儲存此商品</button>
                 `;
                 listDiv.appendChild(card);
@@ -247,6 +271,31 @@
                 btn.disabled = false;
             }
         }
+
+        // ✨ Supabase 即時監聽：當資料庫商品被更新時，自動同步畫面上的價格
+        const productsListener = supabaseClient
+            .channel('public-products-changes')
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'products' }, (payload) => { 
+                const updatedProduct = payload.new;
+                const priceInput = document.getElementById(`price-${updatedProduct.id}`);
+                
+                // 如果畫面上找得到這個商品的價格輸入框，就把它更新成最新的
+                if (priceInput) {
+                    // 為了避免你正在手動打字修改到一半被蓋掉，可以加個判斷：
+                    // 如果輸入框沒有被「聚焦(點擊)」，才自動更新
+                    if (document.activeElement !== priceInput) {
+                        priceInput.value = updatedProduct.price;
+                        
+                        // 給予視覺提示：背景閃爍綠色，讓你知道價格剛剛自動同步了
+                        priceInput.style.backgroundColor = '#e3fbe3';
+                        priceInput.style.transition = 'background-color 0.5s';
+                        setTimeout(() => { 
+                            priceInput.style.backgroundColor = 'white'; 
+                        }, 2000);
+                    }
+                }
+            })
+            .subscribe();
 
         document.addEventListener('DOMContentLoaded', loadProducts);
     </script>
