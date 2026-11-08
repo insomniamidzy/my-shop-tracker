@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
+    <meta name="robots" content="noindex, nofollow">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>代充訂單即時對帳監控（動態擴充版）</title>
@@ -194,6 +195,12 @@
         <div style="border-top: 1px dotted #ccc; margin: 8px 0;"></div>
 
         <div class="dash-item"><span>✅ 已完成總量：</span> <span class="dash-val" id="stat-count" style="color: #1e7e34;">0 筆</span></div>
+        
+        <!-- ✨ 新增：顯示歷史封存與人工校正點數 -->
+        <div class="dash-item" id="offset-row" style="display: none; color: #e65100;">
+            <span>📝 歷史與校正消耗：</span> <span class="dash-val" id="stat-offset">0 點</span>
+        </div>
+
         <div class="dash-item" style="border-top: 1px dashed #ccc; padding-top: 8px;">
             <span>✨ 總花費點數：</span> <span class="dash-val points-text" id="stat-points">0 點</span>
         </div>
@@ -221,6 +228,9 @@
         let allOrdersData = [];
         let currentlyFilteredOrders = []; 
 
+        let archivedPoints = 0;
+        let manualOffset = 0;
+
         const gameNameMap = {
             'identity-v': '第五人格',
             'valorant': '特戰英豪',
@@ -242,6 +252,21 @@
             if (isFirstLoad) {
                 document.getElementById('loading').style.display = 'block';
                 document.getElementById('orders-table').style.display = 'none';
+            }
+
+            try {
+                const { data: statsData, error: statsError } = await supabaseClient
+                    .from('system_stats')
+                    .select('*')
+                    .eq('id', 1)
+                    .single();
+
+                if (!statsError && statsData) {
+                    archivedPoints = statsData.archived_used_points || 0;
+                    manualOffset = statsData.manual_offset_points || 0;
+                }
+            } catch (err) {
+                console.error("無法讀取系統校正數據", err);
             }
 
             const { data, error } = await supabaseClient
@@ -479,7 +504,20 @@
 
             document.getElementById('orders-table').style.display = 'table';
 
-            const totalPoints = (count759 * 1220) + (count60 * 120) + eventPoints;
+            // ✨ 修改：計算畫面上現存訂單的總點數
+            const basePoints = (count759 * 1220) + (count60 * 120) + eventPoints;
+            
+            // ✨ 修改：將現有訂單 + 封存點數 + 人工校正點數 全部加總
+            const totalOffset = archivedPoints + manualOffset;
+            const trueTotalPoints = basePoints + totalOffset;
+
+            // ✨ 修改：如果有校正點數，就把「歷史與校正消耗」那行顯示出來
+            if (totalOffset > 0) {
+                document.getElementById('offset-row').style.display = 'flex';
+                document.getElementById('stat-offset').innerText = '+ ' + totalOffset.toLocaleString() + ' 點';
+            } else {
+                document.getElementById('offset-row').style.display = 'none';
+            }
 
             document.getElementById('stat-759').innerText = count759 + ' 單位';
             document.getElementById('stat-60').innerText = count60 + ' 單位';
