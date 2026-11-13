@@ -271,7 +271,7 @@
 
             const { data, error } = await supabaseClient
                 .from('orders')
-                .select('id, order_no, game_id, account_info, department, uid, nickname, server_str, realname_status, item_name, final_amount, payment_method, extra_gifts, operator, status, line_name, completed_at, created_at, is_transfer, fb_link, master_order, original_amount')
+                .select('id, order_no, game_id, account_info, department, uid, nickname, server_str, realname_status, item_name, final_amount, payment_method, extra_gifts, operator, status, line_name, completed_at, created_at, is_transfer, fb_link, master_order, original_amount, payment_proof_url')
                 .or('game_id.eq.identity-v,game_id.is.null') 
                 .order('id', { ascending: false });
 
@@ -467,10 +467,24 @@
                 }
                 dynamicInfoHtml += '</div>';
 
-                // ✨ 修改：改為產生專屬上傳網址的按鈕，傳入 order_no
+                // ==========================================
+                // ✨ 動作欄位：複製網址 + 查看截圖按鈕
+                // ==========================================
+                let viewProofBtnHtml = '';
+                if (order.payment_proof_url) {
+                    // 如果資料庫裡有網址，就產生這顆紫色的查看按鈕
+                    viewProofBtnHtml = `
+                        <a href="${order.payment_proof_url}" target="_blank" 
+                           style="display: block; text-align: center; padding: 6px 12px; background: #6f42c1; color: white; border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none; transition: 0.2s;">
+                           🖼️ 查看截圖
+                        </a>
+                    `;
+                }
+
                 const finalActionHtml = `
                     <div style="display: flex; flex-direction: column; gap: 6px;">
                         <button class="btn-copy" onclick="copyUploadLink('${order.order_no}', this)">🔗 複製上傳網址</button>
+                        ${viewProofBtnHtml}
                     </div>
                 `;
 
