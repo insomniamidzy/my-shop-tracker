@@ -467,12 +467,23 @@
                 }
                 dynamicInfoHtml += '</div>';
 
-                // 移除鎖定按鈕，僅保留複製明細
+                // ✨ 修改：改為產生專屬上傳網址的按鈕，傳入 order_no
                 const finalActionHtml = `
                     <div style="display: flex; flex-direction: column; gap: 6px;">
-                        <button class="btn-copy" onclick="copyOrderInfo(${order.id}, this, '${displayGameName}')">📋 複製明細</button>
+                        <button class="btn-copy" onclick="copyUploadLink('${order.order_no}', this)">🔗 複製上傳網址</button>
                     </div>
                 `;
+
+                // ==========================================
+                // ✨ 新增：判斷有沒有截圖網址，產生按鈕
+                // ==========================================
+                let proofBtnHtml = '';
+                if (order.payment_proof_url) {
+                    proofBtnHtml = `<a href="${order.payment_proof_url}" target="_blank" 
+                                       style="display: inline-block; margin-top: 6px; padding: 4px 8px; background: #6f42c1; color: white; border-radius: 4px; font-size: 11px; text-decoration: none; font-weight: bold;">
+                                       🖼️ 查看截圖
+                                    </a>`;
+                }
 
                 tr.innerHTML = `
                     <td>
@@ -486,7 +497,6 @@
                     <td>${playerNameHtml}</td> 
                     <td>${order.item_name || '---'}</td>
                     <td><span class="status-badge status-gift">🎁 +${order.extra_gifts || 0}</span></td>
-                    <!-- ✨ 改為附帶確認按鈕的組合 -->
                     <td>
                         <div style="display: flex; align-items: center; gap: 4px;">
                             <span style="color: #d9383a; font-weight: 700;">$</span>
@@ -494,7 +504,11 @@
                             <button class="btn-save-amount" onclick="updateFinalAmount('${order.id}')" title="確認修改">💾</button>
                         </div>
                     </td>
-                    <td><span class="status-badge status-info">${order.payment_method || '---'}</span></td>
+                    <td>
+                        <span class="status-badge status-info">${order.payment_method || '---'}</span>
+                        <br>
+                        ${proofBtnHtml} <!-- ✨ 截圖按鈕會出現在付款方式的下方 -->
+                    </td>
                     <td>${statusDropdownHtml}</td> 
                     <td>${completedAtHtml}</td>
                     <td>${finalActionHtml}</td>
@@ -541,45 +555,29 @@
             document.getElementById('stats-dashboard').style.display = 'block';
         }
 
-        function copyOrderInfo(orderId, btnElement, gameName) {
-            const order = allOrdersData.find(o => o.id === orderId);
-            if (!order) return;
-        
-            let dynamicText = '';
-            if (order.account_info) {
-                let infoObj = {};
-                try { 
-                    infoObj = typeof order.account_info === 'string' ? JSON.parse(order.account_info) : order.account_info; 
-                } catch(e) {
-                    console.error("JSON 解析錯誤", e);
-                }
-                
-                dynamicText = Object.entries(infoObj)
-                    .map(([key, val]) => `𓊆ྀི ${infoKeyMap[key] || key}𓊇ྀི：${val}`)
-                    .join('\n');
-            } else {
-                const arr = [];
-                if (order.server_str) arr.push(`𓊆ྀི 伺服器𓊇ྀི：${order.server_str}`);
-                if (order.uid) arr.push(`𓊆ྀི UID𓊇ྀི：${order.uid}`);
-                dynamicText = arr.join('\n');
+        function copyUploadLink(orderNo, btnElement) {
+            // 🛑 請將下方的網址替換為你剛剛部署 GAS 取得的真實網址
+            const gasWebAppUrl = 'https://script.google.com/macros/s/AKfycbyBkdHaOLKtetFtUBctyx2cNaGFFPoh93SzhrvkghYshwi5gNs1PFe6YWUVL9Muk4_kbQ/exec'; 
+            
+            if (!orderNo || orderNo === 'undefined') {
+                alert('這筆訂單沒有單號，無法產生網址！');
+                return;
             }
-        
-            const textToCopy = `𓊆ྀི 遊戲名稱𓊇ྀི：${gameName}
-        ${dynamicText}
-        𓊆ྀི 遊戲暱稱𓊇ྀི：${order.nickname || ''}
-        𓊆ྀི 購買商品𓊇ྀི：${order.item_name || ''}
-        𓊆ྀི IG/LINE名稱𓊇ྀི：${order.line_name || '未綁定'}
-        𓊆ྀི FB個人主頁𓊇ྀི：${order.fb_link || '未提供'}
-        𓊆ྀི 付款金額𓊇ྀི：${order.final_amount || 0}`;
-        
-            navigator.clipboard.writeText(textToCopy).then(() => {
+
+            // 自動將單號拼接到網址後方
+            const uploadUrl = `${gasWebAppUrl}?orderNo=${orderNo}`;
+            
+            // 寫入剪貼簿
+            navigator.clipboard.writeText(uploadUrl).then(() => {
                 const originalText = btnElement.innerText;
-                btnElement.innerText = '✅ 已複製';
-                btnElement.style.background = '#28a745';
+                const originalBg = btnElement.style.background;
+                
+                btnElement.innerText = '✅ 已複製連結';
+                btnElement.style.background = '#28a745'; // 變成綠色
                 
                 setTimeout(() => {
                     btnElement.innerText = originalText;
-                    btnElement.style.background = '#17a2b8';
+                    btnElement.style.background = originalBg || '#17a2b8'; // 兩秒後變回原色
                 }, 2000);
             }).catch(err => {
                 alert('複製失敗，請檢查瀏覽器權限。');
