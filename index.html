@@ -488,16 +488,7 @@
                     </div>
                 `;
 
-                // ==========================================
-                // ✨ 新增：判斷有沒有截圖網址，產生按鈕
-                // ==========================================
-                let proofBtnHtml = '';
-                if (order.payment_proof_url) {
-                    proofBtnHtml = `<a href="${order.payment_proof_url}" target="_blank" 
-                                       style="display: inline-block; margin-top: 6px; padding: 4px 8px; background: #6f42c1; color: white; border-radius: 4px; font-size: 11px; text-decoration: none; font-weight: bold;">
-                                       🖼️ 查看截圖
-                                    </a>`;
-                }
+                
 
                 tr.innerHTML = `
                     <td>
@@ -518,11 +509,7 @@
                             <button class="btn-save-amount" onclick="updateFinalAmount('${order.id}')" title="確認修改">💾</button>
                         </div>
                     </td>
-                    <td>
-                        <span class="status-badge status-info">${order.payment_method || '---'}</span>
-                        <br>
-                        ${proofBtnHtml} <!-- ✨ 截圖按鈕會出現在付款方式的下方 -->
-                    </td>
+                    <td><span class="status-badge status-info">${order.payment_method || '---'}</span></td>
                     <td>${statusDropdownHtml}</td> 
                     <td>${completedAtHtml}</td>
                     <td>${finalActionHtml}</td>
