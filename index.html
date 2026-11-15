@@ -57,7 +57,6 @@
         .amount-input:focus { border-color: #0071e3; background: #fff; box-shadow: 0 0 0 2px rgba(0,113,227,0.2); }
         .amount-input::-webkit-outer-spin-button, .amount-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
-        /* ✨ 新增：實付金額確認按鈕的樣式 */
         .btn-save-amount {
             background: #28a745;
             color: white;
@@ -71,13 +70,8 @@
             align-items: center;
             justify-content: center;
         }
-        .btn-save-amount:hover {
-            background: #218838;
-        }
-        .btn-save-amount:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
+        .btn-save-amount:hover { background: #218838; }
+        .btn-save-amount:disabled { background: #ccc; cursor: not-allowed; }
         
         .transfer-checkbox { width: 18px; height: 18px; cursor: pointer; accent-color: #8e44ad; }
 
@@ -100,24 +94,42 @@
         .time-text { font-size: 12px; color: #555; }
         .time-date { font-weight: 600; color: #333; }
 
+        /* ✨ 更新的儀表板樣式：不再浮動，改為上方區塊與網格排版 */
         .dashboard {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            padding: 16px 20px;
+            background: white;
+            padding: 20px 24px;
             border-radius: 12px;
-            box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
             border: 1px solid #e1e4e8;
-            z-index: 999;
-            min-width: 240px;
+            margin-bottom: 25px; 
         }
-        .dash-title { margin: 0 0 12px 0; font-size: 14px; color: #333; font-weight: 800; border-bottom: 2px solid #eee; padding-bottom: 6px; display: flex; justify-content: space-between; align-items: baseline; }
-        .dash-item { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; color: #555; }
+        .dash-title { 
+            margin: 0 0 16px 0; font-size: 16px; color: #333; font-weight: 800; 
+            border-bottom: 2px solid #eee; padding-bottom: 8px; 
+            display: flex; justify-content: space-between; align-items: baseline; 
+        }
+        .dash-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 20px;
+        }
+        .dash-col {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 12px 16px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .dash-col-highlight {
+            background: #fff8f8;
+            border: 1px dashed #ffcdd2;
+        }
+        .dash-item { display: flex; justify-content: space-between; font-size: 13px; color: #555; }
         .dash-val { font-weight: 700; color: #0071e3; }
-        .dash-total { margin-top: 12px; padding-top: 10px; border-top: 1px dashed #ccc; font-size: 16px; font-weight: 800; color: #d9383a; display: flex; justify-content: space-between; }
+        .dash-total { margin-top: 4px; padding-top: 10px; border-top: 1px dashed #ccc; font-size: 16px; font-weight: 800; color: #d9383a; display: flex; justify-content: space-between; }
         .points-text { color: #8e44ad; font-weight: 800; }
+        
         .dynamic-info-container { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
     </style>
 </head>
@@ -153,6 +165,45 @@
                 <button onclick="openConfigModal()" class="btn-config" style="margin-left: auto;">⚙️ 設定</button>
             </div>
         </div>
+
+        <!-- ✨ 移至上方的儀表板 -->
+        <div class="dashboard" id="stats-dashboard" style="display: none;">
+            <h4 class="dash-title">
+                <span>📊 畫面結算統計</span>
+                <span id="dash-month-label" style="font-size:12px; color:#888; font-weight:normal;"></span>
+            </h4>
+            
+            <div class="dash-grid">
+                <!-- 左欄：常規點數與訂單數 -->
+                <div class="dash-col">
+                    <div class="dash-item"><span>759 點數：</span> <span class="dash-val" id="stat-759">0 單</span></div>
+                    <div class="dash-item"><span>60 點數 (贈品)：</span> <span class="dash-val" id="stat-60">0 單</span></div>
+                    <div style="border-top: 1px dotted #ccc; margin: 4px 0;"></div>
+                    <div class="dash-item"><span>✅ 已完成總量：</span> <span class="dash-val" id="stat-count" style="color: #1e7e34;">0 筆</span></div>
+                </div>
+
+                <!-- 中欄：活動禮包 -->
+                <div class="dash-col">
+                    <div class="dash-item"><span>特惠禮包 (956回聲)：</span> <span class="dash-val" id="stat-event-0" style="color: #d9383a;">0 組</span></div>
+                    <div class="dash-item"><span>優惠禮包1 (1009回聲)：</span> <span class="dash-val" id="stat-event-1" style="color: #d9383a;">0 組</span></div>
+                    <div class="dash-item"><span>優惠禮包2 (3448回聲)：</span> <span class="dash-val" id="stat-event-2" style="color: #d9383a;">0 組</span></div>
+                    <div class="dash-item"><span>優惠禮包3 (6918回聲)：</span> <span class="dash-val" id="stat-event-3" style="color: #d9383a;">0 組</span></div>
+                </div>
+
+                <!-- 右欄：點數結算與總收 -->
+                <div class="dash-col dash-col-highlight">
+                    <div class="dash-item" id="offset-row" style="display: none; color: #e65100;">
+                        <span>📝 歷史與校正消耗：</span> <span class="dash-val" id="stat-offset">0 點</span>
+                    </div>
+                    <div class="dash-item">
+                        <span>✨ 總花費點數：</span> <span class="dash-val points-text" id="stat-points">0 點</span>
+                    </div>
+                    <div class="dash-total">
+                        <span>💰 總實收：</span> <span id="stat-amount">$0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
         
         <div id="loading">最新對帳資料載入中...</div>
 
@@ -160,7 +211,7 @@
             <thead>
                 <tr>
                     <th>訂單編號</th>
-                    <th>業務來源</th> <!-- ✨ 新增業務來源欄位 -->
+                    <th>業務來源</th>
                     <th>轉單</th>
                     <th>遊戲項目</th> 
                     <th>帳號詳細資訊</th>
@@ -177,34 +228,6 @@
             <tbody id="orders-body">
             </tbody>
         </table>
-    </div>
-
-    <div class="dashboard" id="stats-dashboard" style="display: none;">
-        <h4 class="dash-title">
-            <span>📊 畫面結算統計</span>
-            <span id="dash-month-label" style="font-size:12px; color:#888; font-weight:normal;"></span>
-        </h4>
-        <div class="dash-item"><span>759 點數：</span> <span class="dash-val" id="stat-759">0 單</span></div>
-        <div class="dash-item"><span>60 點數 (贈品)：</span> <span class="dash-val" id="stat-60">0 單</span></div>
-        
-        <div style="border-top: 1px dotted #ccc; margin: 8px 0; padding-top: 8px;"></div>
-        <div class="dash-item"><span>特惠禮包 (956回聲)：</span> <span class="dash-val" id="stat-event-0" style="color: #d9383a;">0 組</span></div>
-        <div class="dash-item"><span>優惠禮包1 (1009回聲)：</span> <span class="dash-val" id="stat-event-1" style="color: #d9383a;">0 組</span></div>
-        <div class="dash-item"><span>優惠禮包2 (3448回聲)：</span> <span class="dash-val" id="stat-event-2" style="color: #d9383a;">0 組</span></div>
-        <div class="dash-item"><span>優惠禮包3 (6918回聲)：</span> <span class="dash-val" id="stat-event-3" style="color: #d9383a;">0 組</span></div>
-        <div style="border-top: 1px dotted #ccc; margin: 8px 0;"></div>
-
-        <div class="dash-item"><span>✅ 已完成總量：</span> <span class="dash-val" id="stat-count" style="color: #1e7e34;">0 筆</span></div>
-        
-        <!-- ✨ 新增：顯示歷史封存與人工校正點數 -->
-        <div class="dash-item" id="offset-row" style="display: none; color: #e65100;">
-            <span>📝 歷史與校正消耗：</span> <span class="dash-val" id="stat-offset">0 點</span>
-        </div>
-
-        <div class="dash-item" style="border-top: 1px dashed #ccc; padding-top: 8px;">
-            <span>✨ 總花費點數：</span> <span class="dash-val points-text" id="stat-points">0 點</span>
-        </div>
-        <div class="dash-total"><span>💰 總實收：</span> <span id="stat-amount">$0</span></div>
     </div>
 
     <div id="config-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 1000; padding: 20px; box-sizing: border-box;">
@@ -289,7 +312,6 @@
         function renderOrders() {
             const statusFilter = document.getElementById('status-filter').value;
             const searchTerm = document.getElementById('search-input').value.toLowerCase();
-            // 替換這裡
             const startDateStr = document.getElementById('start-date').value;
             const endDateStr = document.getElementById('end-date').value;
             
@@ -320,7 +342,6 @@
                     infoSearchStr = Object.values(infoObj).join(' ');
                 }
 
-                // 搜尋詞加入 operator
                 const searchString = `${order.order_no} ${order.uid} ${order.nickname} ${order.line_name} ${infoSearchStr} ${order.game_id} ${order.operator || ''}`.toLowerCase();
                 const matchSearch = searchString.includes(searchTerm);
                 
@@ -329,7 +350,6 @@
                     const dateString = order.completed_at || order.created_at;
                     if (dateString) {
                         const localDate = new Date(dateString);
-                        // 轉換為 YYYY-MM-DD 格式的台灣時間進行比對
                         const taiwanDateStr = localDate.toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
                         
                         if (startDateStr && taiwanDateStr < startDateStr) matchDate = false;
@@ -392,16 +412,12 @@
                     });
                 }
 
-                
-
-                // ✨ 處理九歌/業務來源標籤
                 let operatorBadge = '<span style="color: #999;">一般</span>';
                 if (order.operator === '九歌') {
                     operatorBadge = '<span class="status-badge" style="background: #673ab7; color: white;">💼 九歌</span>';
                 } else if (order.operator === 'Mo Lin') {
                     operatorBadge = '<span class="status-badge" style="background: #00796b; color: white;">💼 Mo Lin</span>';
                 } else if (order.operator === 'Sherro') {
-                    // ✨ 新增這行：設定新業務的專屬標籤顏色
                     operatorBadge = '<span class="status-badge" style="background: #e65100; color: white;">💼 Sherro</span>';
                 } else if (order.operator) {
                     operatorBadge = `<span class="status-badge status-server">${order.operator}</span>`;
@@ -413,7 +429,6 @@
                         <option value="pending" ${currentStatus === 'pending' ? 'selected' : ''}>🟡 未付款</option>
                         <option value="paid" ${currentStatus === 'paid' ? 'selected' : ''}>🟢 已付款</option>
                         <option value="completed" ${currentStatus === 'completed' ? 'selected' : ''}>✅ 已完成</option>
-                        <!-- ✨ 新增這行：給業務選擇的合併狀態 -->
                         <option value="merged" ${currentStatus === 'merged' ? 'selected' : ''}>🔗 合併副單</option>
                         <option value="contacting" ${currentStatus === 'contacting' ? 'selected' : ''}>🕵️ 找人中</option> 
                         <option value="cancelled" ${currentStatus === 'cancelled' ? 'selected' : ''}>🔴 已取消</option>
@@ -467,12 +482,8 @@
                 }
                 dynamicInfoHtml += '</div>';
 
-                // ==========================================
-                // ✨ 動作欄位：複製網址 + 查看截圖按鈕
-                // ==========================================
                 let viewProofBtnHtml = '';
                 if (order.payment_proof_url) {
-                    // 如果資料庫裡有網址，就產生這顆紫色的查看按鈕
                     viewProofBtnHtml = `
                         <a href="${order.payment_proof_url}" target="_blank" 
                            style="display: block; text-align: center; padding: 6px 12px; background: #6f42c1; color: white; border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none; transition: 0.2s;">
@@ -487,8 +498,6 @@
                         ${viewProofBtnHtml}
                     </div>
                 `;
-
-                
 
                 tr.innerHTML = `
                     <td>
@@ -519,14 +528,10 @@
 
             document.getElementById('orders-table').style.display = 'table';
 
-            // ✨ 修改：計算畫面上現存訂單的總點數
             const basePoints = (count759 * 1220) + (count60 * 120) + eventPoints;
-            
-            // ✨ 修改：將現有訂單 + 封存點數 + 人工校正點數 全部加總
             const totalOffset = archivedPoints + manualOffset;
             const trueTotalPoints = basePoints + totalOffset;
 
-            // ✨ 修改：如果有校正點數，就把「歷史與校正消耗」那行顯示出來
             if (totalOffset > 0) {
                 document.getElementById('offset-row').style.display = 'flex';
                 document.getElementById('stat-offset').innerText = '+ ' + totalOffset.toLocaleString() + ' 點';
@@ -543,21 +548,23 @@
             document.getElementById('stat-event-3').innerText = countEvent3 + ' 組';
 
             document.getElementById('stat-count').innerText = totalCompletedCount + ' 筆';
-            document.getElementById('stat-points').innerText = totalPoints.toLocaleString() + ' 點'; 
+            document.getElementById('stat-points').innerText = trueTotalPoints.toLocaleString() + ' 點'; 
             document.getElementById('stat-amount').innerText = '$' + totalCompletedAmount.toLocaleString();
             
-            // 替換原本的 dash-month-label 更新
             let dateLabel = '(全部時間)';
-            if (startDateStr && endDateStr) dateLabel = `(${startDateStr.replace(/-/g, '/')} - ${endDateStr.replace(/-/g, '/')})`;
-            else if (startDateStr) dateLabel = `(${startDateStr.replace(/-/g, '/')} 起)`;
-            else if (endDateStr) dateLabel = `(至 ${endDateStr.replace(/-/g, '/')})`;
+            if (startDateStr && endDateStr) {
+                dateLabel = `(${startDateStr.replace(/-/g, '/')} 至 ${endDateStr.replace(/-/g, '/')})`;
+            } else if (startDateStr) {
+                dateLabel = `(${startDateStr.replace(/-/g, '/')} 起)`;
+            } else if (endDateStr) {
+                dateLabel = `(至 ${endDateStr.replace(/-/g, '/')})`;
+            }
             
             document.getElementById('dash-month-label').innerText = dateLabel;
             document.getElementById('stats-dashboard').style.display = 'block';
         }
 
         function copyUploadLink(orderNo, btnElement) {
-            // 🛑 請將下方的網址替換為你剛剛部署 GAS 取得的真實網址
             const gasWebAppUrl = 'https://script.google.com/macros/s/AKfycbyBkdHaOLKtetFtUBctyx2cNaGFFPoh93SzhrvkghYshwi5gNs1PFe6YWUVL9Muk4_kbQ/exec'; 
             
             if (!orderNo || orderNo === 'undefined') {
@@ -565,20 +572,18 @@
                 return;
             }
 
-            // 自動將單號拼接到網址後方
             const uploadUrl = `${gasWebAppUrl}?orderNo=${orderNo}`;
             
-            // 寫入剪貼簿
             navigator.clipboard.writeText(uploadUrl).then(() => {
                 const originalText = btnElement.innerText;
                 const originalBg = btnElement.style.background;
                 
                 btnElement.innerText = '✅ 已複製連結';
-                btnElement.style.background = '#28a745'; // 變成綠色
+                btnElement.style.background = '#28a745';
                 
                 setTimeout(() => {
                     btnElement.innerText = originalText;
-                    btnElement.style.background = originalBg || '#17a2b8'; // 兩秒後變回原色
+                    btnElement.style.background = originalBg || '#17a2b8'; 
                 }, 2000);
             }).catch(err => {
                 alert('複製失敗，請檢查瀏覽器權限。');
@@ -592,7 +597,6 @@
                 return;
             }
 
-            // ✨ CSV 新增「業務來源」
             const headers = ["訂單編號", "業務來源", "是否轉單", "遊戲項目", "帳號詳細資訊", "玩家暱稱", "LINE/IG名稱", "FB連結", "購買品項", "贈品數 (60)", "實付金額", "訂單狀態", "完成/建立時間"];
             const statusMap = { 'pending': '未付款', 'paid': '已付款', 'completed': '已完成', 'contacting': '找人中', 'cancelled': '已取消' };
 
@@ -609,7 +613,7 @@
 
                 return [
                     `\t${order.order_no || '---'}`, 
-                    order.operator || "一般", // ✨ CSV 對應欄位
+                    order.operator || "一般",
                     order.is_transfer ? "是" : "否",
                     displayGameName,
                     infoStr,      
@@ -630,7 +634,6 @@
 
             const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
             
-            // 替換原本的 dateFilter 與 fileName
             const startDateStr = document.getElementById('start-date').value;
             const endDateStr = document.getElementById('end-date').value;
             
@@ -657,10 +660,8 @@
             const orderId = checkbox.getAttribute('data-id');
             const isTransfer = checkbox.checked;
 
-            // 鎖定按鈕避免連點
             checkbox.disabled = true;
 
-            // 直接將 is_transfer 的狀態寫入資料庫
             const { error } = await supabaseClient
                 .from('orders')
                 .update({ is_transfer: isTransfer })
@@ -668,25 +669,19 @@
                 
             if (error) {
                 alert('轉單狀態更新失敗，請檢查網路：' + error.message);
-                // 如果失敗，把畫面上的勾勾退回去
                 checkbox.checked = !isTransfer; 
             }
             
-            // 解除鎖定
             checkbox.disabled = false;
-            
-            // (選用) 可以在這裡呼叫 fetchOrders() 讓畫面刷新，但純勾選其實不刷新也沒關係
         }
 
         async function updateFinalAmount(orderId) {
-            // 從我們剛才設定的 ID 抓取該輸入框
             const inputElement = document.getElementById(`amount-input-${orderId}`);
             const newAmount = parseInt(inputElement.value) || 0; 
-            const btnElement = inputElement.nextElementSibling; // 抓取旁邊的儲存按鈕
+            const btnElement = inputElement.nextElementSibling; 
 
-            // ✨ 加入防呆確認視窗
             if (!confirm(`【金額修改確認】\n確定要將這筆訂單的實付金額修改為 $${newAmount} 嗎？`)) {
-                renderOrders(); // 如果按取消，重新渲染表格讓數值恢復原狀
+                renderOrders(); 
                 return;
             }
 
@@ -720,7 +715,6 @@
             const newStatus = selectElement.value;
             const statusText = selectElement.options[selectElement.selectedIndex].text;
             
-            // 找出這筆訂單目前的完整資料
             const currentOrder = allOrdersData.find(o => o.id == orderId);
 
             if (!confirm(`確定要將這筆訂單改為「${statusText}」嗎？`)) { 
@@ -736,7 +730,6 @@
                 updatePayload.completed_at = null;
             }
 
-            // ✨ 終極進化：合併副單並自動將金額加到主單
             if (newStatus === 'merged') {
                 const masterNo = prompt('【設定合併副單】\n系統將自動把此單歸零，並「加總到主單」。\n\n⚠️ 請輸入它所跟隨的「主單號碼」：');
                 
@@ -748,14 +741,12 @@
 
                 const cleanMasterNo = masterNo.trim();
                 
-                // 防呆：不能輸入自己的單號
                 if (cleanMasterNo === currentOrder.order_no) {
                     alert('❌ 主單號碼不能是自己！');
                     renderOrders();
                     return;
                 }
 
-                // 1. 去資料庫尋找這張主單
                 const { data: masterData, error: masterErr } = await supabaseClient
                     .from('orders')
                     .select('id, final_amount')
@@ -768,16 +759,13 @@
                     return;
                 }
 
-                // 2. 計算主單的新金額 (主單原本金額 + 這張副單的金額)
                 const currentAmount = parseInt(currentOrder.final_amount) || 0;
                 const newMasterAmount = (parseInt(masterData.final_amount) || 0) + currentAmount;
 
-                // 3. 更新主單金額寫入資料庫
                 await supabaseClient.from('orders')
                     .update({ final_amount: newMasterAmount })
                     .eq('id', masterData.id);
 
-                // 4. 設定副單自己：備份原價、歸零、綁定主單
                 updatePayload.original_amount = currentAmount;
                 updatePayload.final_amount = 0;
                 updatePayload.master_order = cleanMasterNo;
@@ -785,10 +773,8 @@
                 alert(`✅ 合併成功！\n副單已歸零，主單（${cleanMasterNo}）金額已自動升級為 $${newMasterAmount}`);
 
             } else {
-                // ✨ 自動還原：如果從合併副單改回其他狀態，自動從主單扣回金額
                 if (currentOrder.status === 'merged' && currentOrder.master_order) {
                     
-                    // 去資料庫找原來綁定的主單
                     const { data: masterData } = await supabaseClient
                         .from('orders')
                         .select('id, final_amount')
@@ -796,32 +782,28 @@
                         .single();
                         
                     if (masterData && currentOrder.original_amount != null) {
-                        // 將主單扣回原本這張副單的錢
                         const restoredMasterAmount = (parseInt(masterData.final_amount) || 0) - parseInt(currentOrder.original_amount);
                         await supabaseClient.from('orders')
                             .update({ final_amount: restoredMasterAmount < 0 ? 0 : restoredMasterAmount })
                             .eq('id', masterData.id);
                     }
 
-                    // 還原副單自己
                     if (currentOrder.original_amount != null) {
                         updatePayload.final_amount = currentOrder.original_amount;
-                        updatePayload.original_amount = null; // 清空備份
+                        updatePayload.original_amount = null; 
                     }
-                    updatePayload.master_order = null; // 清空綁定
+                    updatePayload.master_order = null; 
                     
                     alert('【解除合併】\n已解除主單綁定，副單恢復原價，並已自動從主單扣除該金額！');
                 }
             }
 
-            // 更新自己(副單)的狀態與金額
             const { error } = await supabaseClient.from('orders').update(updatePayload).eq('id', orderId);
             
             if (error) {
                 alert('狀態更新失敗：' + error.message); 
             }
             
-            // 重新抓取資料，主副單的畫面數字會瞬間更新
             fetchOrders(); 
         }
 
