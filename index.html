@@ -294,7 +294,7 @@
 
             const { data, error } = await supabaseClient
                 .from('orders')
-                .select('id, order_no, game_id, account_info, department, uid, nickname, server_str, realname_status, item_name, final_amount, payment_method, extra_gifts, operator, status, line_name, completed_at, created_at, is_transfer, fb_link, master_order, original_amount, payment_proof_url')
+                .select('id, order_no, game_id, account_info, department, uid, nickname, server_str, realname_status, item_name, final_amount, cost, payment_method, extra_gifts, operator, status, line_name, completed_at, created_at, is_transfer, fb_link, master_order, original_amount, payment_proof_url')
                 .or('game_id.eq.identity-v,game_id.is.null') 
                 .order('id', { ascending: false });
 
@@ -499,6 +499,27 @@
                     </div>
                 `;
 
+                // ✨ 1. 在組合 HTML 之前，先計算出成本與毛利
+                const finalAmt = parseInt(order.final_amount) || 0;
+                const costAmt = parseInt(order.cost) || 0;
+                const profit = finalAmt - costAmt;
+                
+                // ✨ 2. 如果有成本，就組裝黃綠色的小標籤
+                let costDisplayHtml = '';
+                if (costAmt > 0) {
+                    costDisplayHtml = `
+                        <div style="font-size: 11px; margin-top: 6px; display: flex; flex-direction: column; gap: 3px;">
+                            <span style="color: #856404; background: #fff3cd; padding: 2px 6px; border-radius: 4px; display: inline-block;">
+                                📦 成本: $${costAmt.toLocaleString()}
+                            </span>
+                            <span style="color: #1e7e34; background: #e3fbe3; padding: 2px 6px; border-radius: 4px; display: inline-block;">
+                                📈 毛利: $${profit.toLocaleString()}
+                            </span>
+                        </div>
+                    `;
+                }
+
+                // 3. 原本的 HTML 組合字串
                 tr.innerHTML = `
                     <td>
                         <strong>${order.order_no || '---'}</strong>
@@ -511,13 +532,18 @@
                     <td>${playerNameHtml}</td> 
                     <td>${order.item_name || '---'}</td>
                     <td><span class="status-badge status-gift">🎁 +${order.extra_gifts || 0}</span></td>
+                    
+                    <!-- 👇 被替換掉的第九個 <td> (實付金額與標籤) -->
                     <td>
                         <div style="display: flex; align-items: center; gap: 4px;">
                             <span style="color: #d9383a; font-weight: 700;">$</span>
-                            <input type="number" class="amount-input" id="amount-input-${order.id}" value="${order.final_amount || 0}">
+                            <input type="number" class="amount-input" id="amount-input-${order.id}" value="${finalAmt}">
                             <button class="btn-save-amount" onclick="updateFinalAmount('${order.id}')" title="確認修改">💾</button>
                         </div>
+                        ${costDisplayHtml}
                     </td>
+                    <!-- 👆 替換結束 -->
+
                     <td><span class="status-badge status-info">${order.payment_method || '---'}</span></td>
                     <td>${statusDropdownHtml}</td> 
                     <td>${completedAtHtml}</td>
