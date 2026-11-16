@@ -349,6 +349,11 @@
             let totalCompletedAmount = 0;
             let totalCompletedCost = 0;
 
+            // ✨ 1. 宣告用來累積各個業務經手單淨利的變數
+            let jiuGeTotalProfit = 0;
+            let molinTotalProfit = 0;
+            let sherroTotalProfit = 0;
+
             let countEvent0 = 0;
             let countEvent1 = 0;
             let countEvent2 = 0;
@@ -394,6 +399,16 @@
                     totalCompletedAmount += (parseInt(order.final_amount) || 0);
                     totalCompletedCost += (parseInt(order.cost) || 0);
                     count60 += (parseInt(order.extra_gifts) || 0);
+
+                    // ✨ 2. 計算該筆訂單的淨利，並依照 operator 歸類累加到對應的夥伴身上
+                    const orderProfit = (parseInt(order.final_amount) || 0) - (parseInt(order.cost) || 0);
+                    if (order.operator === '九歌') {
+                        jiuGeTotalProfit += orderProfit;
+                    } else if (order.operator === 'Mo Lin') {
+                        molinTotalProfit += orderProfit;
+                    } else if (order.operator === 'Sherro') {
+                        sherroTotalProfit += orderProfit;
+                    }
 
                     const itemName = order.item_name || '';
                     const items = itemName.split(' + ').map(i => i.trim());
@@ -527,12 +542,10 @@
                     </div>
                 `;
 
-                // ✨ 1. 在組合 HTML 之前，先計算出成本與毛利
                 const finalAmt = parseInt(order.final_amount) || 0;
                 const costAmt = parseInt(order.cost) || 0;
                 const profit = finalAmt - costAmt;
                 
-                // ✨ 2. 如果有成本，就組裝黃綠色的小標籤
                 let costDisplayHtml = '';
                 if (costAmt > 0) {
                     costDisplayHtml = `
@@ -547,7 +560,6 @@
                     `;
                 }
 
-                // 3. 原本的 HTML 組合字串
                 tr.innerHTML = `
                     <td>
                         <strong>${order.order_no || '---'}</strong>
@@ -560,8 +572,6 @@
                     <td>${playerNameHtml}</td> 
                     <td>${order.item_name || '---'}</td>
                     <td><span class="status-badge status-gift">🎁 +${order.extra_gifts || 0}</span></td>
-                    
-                    <!-- 👇 被替換掉的第九個 <td> (實付金額與標籤) -->
                     <td>
                         <div style="display: flex; align-items: center; gap: 4px;">
                             <span style="color: #d9383a; font-weight: 700;">$</span>
@@ -570,8 +580,6 @@
                         </div>
                         ${costDisplayHtml}
                     </td>
-                    <!-- 👆 替換結束 -->
-
                     <td><span class="status-badge status-info">${order.payment_method || '---'}</span></td>
                     <td>${statusDropdownHtml}</td> 
                     <td>${completedAtHtml}</td>
@@ -593,36 +601,31 @@
                 document.getElementById('offset-row').style.display = 'none';
             }
 
-
             document.getElementById('stat-759').innerText = count759 + ' 單位';
             document.getElementById('stat-203').innerText = count203 + ' 單位';
             document.getElementById('stat-60').innerText = count60 + ' 單位';
             
-            // ✨ 1. 計算總淨利 (總實收 - 總成本)
+            // ✨ 3. 計算總淨利與各個合作夥伴的分潤
             const totalCompletedProfit = totalCompletedAmount - totalCompletedCost;
-            let netProfit = totalCompletedProfit; // 定義淨利變數供後續分潤計算使用
+            let netProfit = totalCompletedProfit;
 
-            // 2. 計算其他夥伴各自負責的單的分潤（目前暫定 0，後續可依業務需求串接實際數字）
-            let jiuGeProfit = 0;   
-            let molinProfit = 0;   
-            let sherroProfit = 0;  
-
-            let jiuGeShare = jiuGeProfit * 0.40;
-            let molinShare = molinProfit * 0.40;
-            let sherroShare = sherroProfit * 0.35;
+            // 用剛剛累積出來的真實淨利乘以對應比例
+            let jiuGeShare = jiuGeTotalProfit * 0.40;   // 九歌 4 成
+            let molinShare = molinTotalProfit * 0.40;   // Molin 4 成
+            let sherroShare = sherroTotalProfit * 0.35; // Sherro 3.5 成
 
             let totalOtherShare = jiuGeShare + molinShare + sherroShare;
 
-            // 3. 扣掉其他夥伴後，剩下由四人按比例拆帳的「剩餘淨利」
+            // 4. 扣掉其他夥伴後，剩下由四人按比例拆帳的「剩餘淨利」
             let remainingProfitForCore = netProfit - totalOtherShare;
 
-            // 4. 四位核心夥伴的分潤金額計算 (以晨 33%、葉子 32%、牧宣 17.5%、沐恩 17.5%)
+            // 5. 四位核心夥伴的分潤金額計算 (以晨 33%、葉子 32%、牧宣 17.5%、沐恩 17.5%)
             let yiChenProfit = remainingProfitForCore * 0.33;
             let yeZiProfit = remainingProfitForCore * 0.32;
             let muXuanProfit = remainingProfitForCore * 0.175;
             let muEnProfit = remainingProfitForCore * 0.175;
 
-            // 5. 將計算好的分潤金額填入網頁 HTML 介面上
+            // 6. 將計算好的分潤金額填入網頁 HTML 介面上
             document.getElementById('profit-yichen').innerText = '$' + Math.round(yiChenProfit).toLocaleString();
             document.getElementById('profit-yezi').innerText = '$' + Math.round(yeZiProfit).toLocaleString();
             document.getElementById('profit-muxuan').innerText = '$' + Math.round(muXuanProfit).toLocaleString();
@@ -891,15 +894,9 @@
             if (error) {
                 alert('狀態更新失敗：' + error.message); 
             } else {
-                // 先抓出目前的成本，用來判斷這單是不是已經扣過點數了
                 const currentCost = parseInt(currentOrder.cost) || 0;
-
-                console.log('🚨 【退點偵測】這筆訂單的成本是:', currentCost);
-                console.log('🚨 【退點偵測】這筆訂單的扣卡紀錄是:', currentOrder.used_cards);
-                // 🛑 記得替換成你剛剛專案B重新部署後的新網址
                 const GAS_URL = 'https://script.google.com/macros/s/AKfycbzpo2NDhA91p09X_oRQeYJHzC6oZde--QIirxEXVmNC69uBfrr1WE8B0Y0iUhq3KHUt/exec'; 
 
-                // ✨ 情況 A：葉子按下「已派發」 ➔ 觸發自動扣點
                 if (newStatus === 'delivered') {
                     if (currentCost > 0) {
                         console.log('🔒 系統攔截：此單已扣過點數與成本，跳過重複扣款。');
@@ -914,10 +911,7 @@
                         }
                     }
                 }
-                
-                // ✨ 情況 B：改回「待對帳/未付款/已取消」 ➔ 觸發時光倒流退點
                 else if (newStatus === 'cancelled' || newStatus === 'pending' || newStatus === 'checking') {
-                    // 如果這單已經有成本，而且資料庫有紀錄當初扣了哪幾張卡，就呼叫退點引擎
                     if (currentCost > 0 && currentOrder.used_cards) {
                         console.log('⏪ 啟動精準退點程序...');
                         fetch(GAS_URL, {
@@ -931,12 +925,8 @@
             fetchOrders();
         }
 
-        // ✨ 升級版點數計算機：支援回聲倍數換算與獨立贈品欄位
         function calculateOrderPoints(itemName, extraGifts) {
             let pts = 0;
-            
-            // 1. 處理獨立的贈品 (60回聲 = 120點)
-            // Supabase 的 extra_gifts 欄位紀錄的是數量，例如 2，就是 2 * 120 點
             const giftQty = parseInt(extraGifts) || 0;
             if (giftQty > 0) {
                 pts += giftQty * 120;
@@ -954,32 +944,23 @@
             };
             
             items.forEach(item => {
-                // 解析後面的數量 (例如 x 2, * 3)
                 const qtyMatch = item.match(/[xX*]\s*(\d+)/);
                 const qty = qtyMatch ? parseInt(qtyMatch[1]) : 1;
-                
-                // 去除數量後的基本品名
                 const baseItem = item.replace(/\s*[xX*]\s*\d+$/, '').trim();
 
-                // 判斷是否為活動禮包
                 if (eventMap[baseItem]) {
                     pts += eventMap[baseItem] * qty;
                 } else {
-                    // 抓取「回聲」前面的數字 (例如 "7590 回聲" 抓出 7590)
                     const echoMatch = baseItem.match(/(\d+)\s*回聲/);
                     if (echoMatch) {
                         const echoAmount = parseInt(echoMatch[1]);
-                        
-                        // 處理 759 的倍數 (例如 7590 回聲 = 10 單位 = 10 * 1220 點)
                         if (echoAmount % 759 === 0) {
                             const units = echoAmount / 759;
                             pts += (units * 1220) * qty;
                         } 
-                        // 處理 203 面額
                         else if (echoAmount === 203) {
                             pts += 370 * qty;
                         }
-                        // 處理 60 面額 (如果客人是直接買60回聲，而不是算在贈品欄的話)
                         else if (echoAmount === 60) {
                             pts += 120 * qty;
                         }
