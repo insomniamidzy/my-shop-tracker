@@ -177,6 +177,7 @@
                 <!-- 左欄：常規點數與訂單數 -->
                 <div class="dash-col">
                     <div class="dash-item"><span>759 點數：</span> <span class="dash-val" id="stat-759">0 單</span></div>
+                    <div class="dash-item"><span>203 點數：</span> <span class="dash-val" id="stat-203">0 單</span></div>
                     <div class="dash-item"><span>60 點數 (贈品)：</span> <span class="dash-val" id="stat-60">0 單</span></div>
                     <div style="border-top: 1px dotted #ccc; margin: 4px 0;"></div>
                     <div class="dash-item"><span>✅ 已完成總量：</span> <span class="dash-val" id="stat-count" style="color: #1e7e34;">0 筆</span></div>
@@ -327,6 +328,7 @@
             tbody.innerHTML = ''; 
 
             let count759 = 0;
+            let count203 = 0;
             let count60 = 0;
             let eventPoints = 0; 
             let totalCompletedCount = 0;
@@ -416,6 +418,8 @@
                                 const baseEcho = parseInt(echoMatch[1]);
                                 if (baseEcho % 759 === 0) {
                                     count759 += (baseEcho / 759) * qty;
+                                }else if (baseEcho === 203) {
+                                    count203 += qty;
                                 }
                             }
                         }
@@ -564,7 +568,7 @@
 
             document.getElementById('orders-table').style.display = 'table';
 
-            const basePoints = (count759 * 1220) + (count60 * 120) + eventPoints;
+            const basePoints = (count759 * 1220)+ (count203 * 370) + (count60 * 120) + eventPoints;
             const totalOffset = archivedPoints + manualOffset;
             const trueTotalPoints = basePoints + totalOffset;
 
@@ -579,6 +583,7 @@
             const totalCompletedProfit = totalCompletedAmount - totalCompletedCost;
 
             document.getElementById('stat-759').innerText = count759 + ' 單位';
+            document.getElementById('stat-203').innerText = count203 + ' 單位';
             document.getElementById('stat-60').innerText = count60 + ' 單位';
             
             document.getElementById('stat-event-0').innerText = countEvent0 + ' 組';
