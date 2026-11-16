@@ -593,41 +593,36 @@
                 document.getElementById('offset-row').style.display = 'none';
             }
 
-            // ✨ 計算總毛利 (總實收 - 總成本)
-            const totalCompletedProfit = totalCompletedAmount - totalCompletedCost;
 
             document.getElementById('stat-759').innerText = count759 + ' 單位';
             document.getElementById('stat-203').innerText = count203 + ' 單位';
             document.getElementById('stat-60').innerText = count60 + ' 單位';
             
-            // 假設你已經統計出了：
-            // totalCompletedAmount (總實收金額)
-            // totalCompletedCost (總成本)
-            // netProfit = totalCompletedAmount - totalCompletedCost (總淨利)
+            // ✨ 1. 計算總淨利 (總實收 - 總成本)
+            const totalCompletedProfit = totalCompletedAmount - totalCompletedCost;
+            let netProfit = totalCompletedProfit; // 定義淨利變數供後續分潤計算使用
 
-            // 1. 計算其他夥伴各自負責的單的利潤（假設你有辦法過濾出他們各自經手的單，或從資料欄位讀取）
-            // 這裡以範例變數帶入：
-            let jiuGeProfit = 0;   // 酒歌負責的單的淨利
-            let molinProfit = 0;   // Molin 負責的單的淨利
-            let sherroProfit = 0;  // Sherro 負責的單的淨利
+            // 2. 計算其他夥伴各自負責的單的分潤（目前暫定 0，後續可依業務需求串接實際數字）
+            let jiuGeProfit = 0;   
+            let molinProfit = 0;   
+            let sherroProfit = 0;  
 
-            // 依照比例計算其他夥伴的分潤金額 (4成、4成、3.5成...等，這裡假設是用他們的淨利去乘比例，或依你的實際業務定義調整)
             let jiuGeShare = jiuGeProfit * 0.40;
             let molinShare = molinProfit * 0.40;
             let sherroShare = sherroProfit * 0.35;
 
             let totalOtherShare = jiuGeShare + molinShare + sherroShare;
 
-            // 2. 扣掉其他夥伴後，剩下由四人均分或按比例拆帳的「剩餘淨利」
+            // 3. 扣掉其他夥伴後，剩下由四人按比例拆帳的「剩餘淨利」
             let remainingProfitForCore = netProfit - totalOtherShare;
 
-            // 3. 四位核心夥伴的分潤金額計算
+            // 4. 四位核心夥伴的分潤金額計算 (以晨 33%、葉子 32%、牧宣 17.5%、沐恩 17.5%)
             let yiChenProfit = remainingProfitForCore * 0.33;
             let yeZiProfit = remainingProfitForCore * 0.32;
             let muXuanProfit = remainingProfitForCore * 0.175;
             let muEnProfit = remainingProfitForCore * 0.175;
 
-            // 4. 將數據填入網頁 HTML 介面上
+            // 5. 將計算好的分潤金額填入網頁 HTML 介面上
             document.getElementById('profit-yichen').innerText = '$' + Math.round(yiChenProfit).toLocaleString();
             document.getElementById('profit-yezi').innerText = '$' + Math.round(yeZiProfit).toLocaleString();
             document.getElementById('profit-muxuan').innerText = '$' + Math.round(muXuanProfit).toLocaleString();
