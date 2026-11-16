@@ -183,12 +183,26 @@
                     <div class="dash-item"><span>✅ 已完成總量：</span> <span class="dash-val" id="stat-count" style="color: #1e7e34;">0 筆</span></div>
                 </div>
 
-                <!-- 中欄：活動禮包 -->
-                <div class="dash-col">
-                    <div class="dash-item"><span>特惠禮包 (956回聲)：</span> <span class="dash-val" id="stat-event-0" style="color: #d9383a;">0 組</span></div>
-                    <div class="dash-item"><span>優惠禮包1 (1009回聲)：</span> <span class="dash-val" id="stat-event-1" style="color: #d9383a;">0 組</span></div>
-                    <div class="dash-item"><span>優惠禮包2 (3448回聲)：</span> <span class="dash-val" id="stat-event-2" style="color: #d9383a;">0 組</span></div>
-                    <div class="dash-item"><span>優惠禮包3 (6918回聲)：</span> <span class="dash-val" id="stat-event-3" style="color: #d9383a;">0 組</span></div>
+                <!-- 中欄： -->
+                <div class="profit-dashboard">
+                    <h3>💰 團隊分潤即時結算</h3>
+                    
+                    <div class="core-team">
+                        <h4>核心四人合夥分潤</h4>
+                        <p>以晨 (33%)：<span id="profit-yichen">$0</span></p>
+                        <p>葉子 (32%)：<span id="profit-yezi">$0</span></p>
+                        <p>牧宣 (17.5%)：<span id="profit-muxuan">$0</span></p>
+                        <p>沐恩 (17.5%)：<span id="profit-muen">$0</span></p>
+                    </div>
+
+                    <hr>
+
+                    <div class="other-team">
+                        <h4>其他業務/協力夥伴分潤</h4>
+                        <p>酒歌 (4成)交辦單：<span id="profit-jiuge">$0</span></p>
+                        <p>Molin (4成)交辦單：<span id="profit-molin">$0</span></p>
+                        <p>Sherro (3.5成)交辦單：<span id="profit-sherro">$0</span></p>
+                    </div>
                 </div>
 
                 <!-- 右欄：點數結算與財務總覽 -->
@@ -586,10 +600,42 @@
             document.getElementById('stat-203').innerText = count203 + ' 單位';
             document.getElementById('stat-60').innerText = count60 + ' 單位';
             
-            document.getElementById('stat-event-0').innerText = countEvent0 + ' 組';
-            document.getElementById('stat-event-1').innerText = countEvent1 + ' 組';
-            document.getElementById('stat-event-2').innerText = countEvent2 + ' 組';
-            document.getElementById('stat-event-3').innerText = countEvent3 + ' 組';
+            // 假設你已經統計出了：
+            // totalCompletedAmount (總實收金額)
+            // totalCompletedCost (總成本)
+            // netProfit = totalCompletedAmount - totalCompletedCost (總淨利)
+
+            // 1. 計算其他夥伴各自負責的單的利潤（假設你有辦法過濾出他們各自經手的單，或從資料欄位讀取）
+            // 這裡以範例變數帶入：
+            let jiuGeProfit = 0;   // 酒歌負責的單的淨利
+            let molinProfit = 0;   // Molin 負責的單的淨利
+            let sherroProfit = 0;  // Sherro 負責的單的淨利
+
+            // 依照比例計算其他夥伴的分潤金額 (4成、4成、3.5成...等，這裡假設是用他們的淨利去乘比例，或依你的實際業務定義調整)
+            let jiuGeShare = jiuGeProfit * 0.40;
+            let molinShare = molinProfit * 0.40;
+            let sherroShare = sherroProfit * 0.35;
+
+            let totalOtherShare = jiuGeShare + molinShare + sherroShare;
+
+            // 2. 扣掉其他夥伴後，剩下由四人均分或按比例拆帳的「剩餘淨利」
+            let remainingProfitForCore = netProfit - totalOtherShare;
+
+            // 3. 四位核心夥伴的分潤金額計算
+            let yiChenProfit = remainingProfitForCore * 0.33;
+            let yeZiProfit = remainingProfitForCore * 0.32;
+            let muXuanProfit = remainingProfitForCore * 0.175;
+            let muEnProfit = remainingProfitForCore * 0.175;
+
+            // 4. 將數據填入網頁 HTML 介面上
+            document.getElementById('profit-yichen').innerText = '$' + Math.round(yiChenProfit).toLocaleString();
+            document.getElementById('profit-yezi').innerText = '$' + Math.round(yeZiProfit).toLocaleString();
+            document.getElementById('profit-muxuan').innerText = '$' + Math.round(muXuanProfit).toLocaleString();
+            document.getElementById('profit-muen').innerText = '$' + Math.round(muEnProfit).toLocaleString();
+
+            document.getElementById('profit-jiuge').innerText = '$' + Math.round(jiuGeShare).toLocaleString();
+            document.getElementById('profit-molin').innerText = '$' + Math.round(molinShare).toLocaleString();
+            document.getElementById('profit-sherro').innerText = '$' + Math.round(sherroShare).toLocaleString();
 
             document.getElementById('stat-count').innerText = totalCompletedCount + ' 筆';
             document.getElementById('stat-points').innerText = trueTotalPoints.toLocaleString() + ' 點'; 
