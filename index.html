@@ -154,10 +154,10 @@
                 <select id="status-filter" class="user-select" onchange="renderOrders()">
                     <option value="all">👁️ 全部狀態</option>
                     <option value="pending">🟡 只看未付款</option>
-                    <option value="paid">🟢 只看已付款</option>
-                    <option value="completed">✅ 只看已完成</option>
+                    <option value="checking">⏳ 只看待對帳 (客人附圖)</option>
+                    <option value="delivered">📦 只看已派發 (葉子做完)</option>
+                    <option value="completed">✅ 只看已完成 (牧宣查完)</option>
                     <option value="merged">🔗 合併副單 (0元)</option>
-                    <option value="contacting">🕵️ 找人中</option>
                     <option value="cancelled">🔴 只看已取消</option>
                 </select>
 
@@ -427,10 +427,10 @@
                 const statusDropdownHtml = `
                     <select class="status-dropdown" data-id="${order.id}" onchange="updateOrderStatus(this)">
                         <option value="pending" ${currentStatus === 'pending' ? 'selected' : ''}>🟡 未付款</option>
-                        <option value="paid" ${currentStatus === 'paid' ? 'selected' : ''}>🟢 已付款</option>
-                        <option value="completed" ${currentStatus === 'completed' ? 'selected' : ''}>✅ 已完成</option>
+                        <option value="checking" ${currentStatus === 'checking' ? 'selected' : ''}>⏳ 待對帳(已附圖)</option>
+                        <option value="delivered" ${currentStatus === 'delivered' ? 'selected' : ''}>📦 已派發(待查帳)</option>
+                        <option value="completed" ${currentStatus === 'completed' ? 'selected' : ''}>✅ 已完成(入帳結案)</option>
                         <option value="merged" ${currentStatus === 'merged' ? 'selected' : ''}>🔗 合併副單</option>
-                        <option value="contacting" ${currentStatus === 'contacting' ? 'selected' : ''}>🕵️ 找人中</option> 
                         <option value="cancelled" ${currentStatus === 'cancelled' ? 'selected' : ''}>🔴 已取消</option>
                     </select>
                 `;
@@ -798,13 +798,90 @@
                 }
             }
 
-            const { error } = await supabaseClient.from('orders').update(updatePayload).eq('id', orderId);
             
+            const { error } = await supabaseClient.from('orders').update(updatePayload).eq('id', orderId);
+        
             if (error) {
                 alert('狀態更新失敗：' + error.message); 
+            } else {
+                // ✨ 將觸發自動扣點與成本計算的時機，改為葉子按下「已派發」時
+                if (newStatus === 'delivered') {
+                    const requiredPts = calculateOrderPoints(currentOrder.item_name, currentOrder.extra_gifts);
+                    
+                    if (requiredPts > 0) {
+                        const GAS_URL = 'https://script.google.com/macros/s/AKfycbzpo2NDhA91p09X_oRQeYJHzC6oZde--QIirxEXVmNC69uBfrr1WE8B0Y0iUhq3KHUt/exec'; // 記得填入
+                        fetch(GAS_URL, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            body: JSON.stringify({ 
+                                type: 'deduct_points', 
+                                orderId: currentOrder.id, 
+                                requiredPoints: requiredPts 
+                            })
+                        }).catch(e => console.log('扣點請求失敗', e));
+                    }
+                }
             }
+            fetchOrders();
+        }
+
+        // ✨ 升級版點數計算機：支援回聲倍數換算與獨立贈品欄位
+        function calculateOrderPoints(itemName, extraGifts) {
+            let pts = 0;
             
-            fetchOrders(); 
+            // 1. 處理獨立的贈品 (60回聲 = 120點)
+            // Supabase 的 extra_gifts 欄位紀錄的是數量，例如 2，就是 2 * 120 點
+            const giftQty = parseInt(extraGifts) || 0;
+            if (giftQty > 0) {
+                pts += giftQty * 120;
+            }
+
+            if (!itemName) return pts;
+            
+            const items = itemName.split('+').map(i => i.trim());
+            const eventMap = {
+                "八週年特惠禮包 (956回聲+5精華)": 1220,
+                "八週年優惠禮包1 (1009回聲+3精華)": 1840,
+                "八週年優惠禮包2 (3448回聲+7精華)": 6100,
+                "八週年優惠禮包3 (6918回聲+15精華)": 12000,
+                "八週年禮包大全套 (四款全包)": 21160
+            };
+            
+            items.forEach(item => {
+                // 解析後面的數量 (例如 x 2, * 3)
+                const qtyMatch = item.match(/[xX*]\s*(\d+)/);
+                const qty = qtyMatch ? parseInt(qtyMatch[1]) : 1;
+                
+                // 去除數量後的基本品名
+                const baseItem = item.replace(/\s*[xX*]\s*\d+$/, '').trim();
+
+                // 判斷是否為活動禮包
+                if (eventMap[baseItem]) {
+                    pts += eventMap[baseItem] * qty;
+                } else {
+                    // 抓取「回聲」前面的數字 (例如 "7590 回聲" 抓出 7590)
+                    const echoMatch = baseItem.match(/(\d+)\s*回聲/);
+                    if (echoMatch) {
+                        const echoAmount = parseInt(echoMatch[1]);
+                        
+                        // 處理 759 的倍數 (例如 7590 回聲 = 10 單位 = 10 * 1220 點)
+                        if (echoAmount % 759 === 0) {
+                            const units = echoAmount / 759;
+                            pts += (units * 1220) * qty;
+                        } 
+                        // 處理 203 面額
+                        else if (echoAmount === 203) {
+                            pts += 370 * qty;
+                        }
+                        // 處理 60 面額 (如果客人是直接買60回聲，而不是算在贈品欄的話)
+                        else if (echoAmount === 60) {
+                            pts += 120 * qty;
+                        }
+                    }
+                }
+            });
+            
+            return pts;
         }
 
         function openConfigModal() { document.getElementById('config-modal').style.display = 'flex'; document.getElementById('new-token-input').value = ''; }
