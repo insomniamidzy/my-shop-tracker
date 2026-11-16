@@ -832,6 +832,9 @@
             } else {
                 // 先抓出目前的成本，用來判斷這單是不是已經扣過點數了
                 const currentCost = parseInt(currentOrder.cost) || 0;
+
+                console.log('🚨 【退點偵測】這筆訂單的成本是:', currentCost);
+                console.log('🚨 【退點偵測】這筆訂單的扣卡紀錄是:', currentOrder.used_cards);
                 // 🛑 記得替換成你剛剛專案B重新部署後的新網址
                 const GAS_URL = 'https://script.google.com/macros/s/AKfycbzpo2NDhA91p09X_oRQeYJHzC6oZde--QIirxEXVmNC69uBfrr1WE8B0Y0iUhq3KHUt/exec'; 
 
