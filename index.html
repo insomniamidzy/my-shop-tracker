@@ -294,7 +294,7 @@
 
             const { data, error } = await supabaseClient
                 .from('orders')
-                .select('id, order_no, game_id, account_info, department, uid, nickname, server_str, realname_status, item_name, final_amount, cost, payment_method, extra_gifts, operator, status, line_name, completed_at, created_at, is_transfer, fb_link, master_order, original_amount, payment_proof_url')
+                .select('id, order_no, game_id, account_info, department, uid, nickname, server_str, realname_status, item_name, final_amount, cost ,used_cards, payment_method, extra_gifts, operator, status, line_name, completed_at, created_at, is_transfer, fb_link, master_order, original_amount, payment_proof_url')
                 .or('game_id.eq.identity-v,game_id.is.null') 
                 .order('id', { ascending: false });
 
@@ -830,21 +830,37 @@
             if (error) {
                 alert('狀態更新失敗：' + error.message); 
             } else {
-                // ✨ 將觸發自動扣點與成本計算的時機，改為葉子按下「已派發」時
+                // 先抓出目前的成本，用來判斷這單是不是已經扣過點數了
+                const currentCost = parseInt(currentOrder.cost) || 0;
+                // 🛑 記得替換成你剛剛專案B重新部署後的新網址
+                const GAS_URL = 'https://script.google.com/macros/s/你的部署ID/exec'; 
+
+                // ✨ 情況 A：葉子按下「已派發」 ➔ 觸發自動扣點
                 if (newStatus === 'delivered') {
-                    const requiredPts = calculateOrderPoints(currentOrder.item_name, currentOrder.extra_gifts);
-                    
-                    if (requiredPts > 0) {
-                        const GAS_URL = 'https://script.google.com/macros/s/AKfycbzpo2NDhA91p09X_oRQeYJHzC6oZde--QIirxEXVmNC69uBfrr1WE8B0Y0iUhq3KHUt/exec'; // 記得填入
+                    if (currentCost > 0) {
+                        console.log('🔒 系統攔截：此單已扣過點數與成本，跳過重複扣款。');
+                    } else {
+                        const requiredPts = calculateOrderPoints(currentOrder.item_name, currentOrder.extra_gifts);
+                        if (requiredPts > 0) {
+                            fetch(GAS_URL, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                                body: JSON.stringify({ type: 'deduct_points', orderId: currentOrder.id, requiredPoints: requiredPts })
+                            }).catch(e => console.log('扣點請求失敗', e));
+                        }
+                    }
+                }
+                
+                // ✨ 情況 B：改回「待對帳/未付款/已取消」 ➔ 觸發時光倒流退點
+                else if (newStatus === 'cancelled' || newStatus === 'pending' || newStatus === 'checking') {
+                    // 如果這單已經有成本，而且資料庫有紀錄當初扣了哪幾張卡，就呼叫退點引擎
+                    if (currentCost > 0 && currentOrder.used_cards) {
+                        console.log('⏪ 啟動精準退點程序...');
                         fetch(GAS_URL, {
                             method: 'POST',
                             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                            body: JSON.stringify({ 
-                                type: 'deduct_points', 
-                                orderId: currentOrder.id, 
-                                requiredPoints: requiredPts 
-                            })
-                        }).catch(e => console.log('扣點請求失敗', e));
+                            body: JSON.stringify({ type: 'refund_points', orderId: currentOrder.id, usedCards: currentOrder.used_cards })
+                        }).catch(e => console.log('退點請求失敗', e));
                     }
                 }
             }
