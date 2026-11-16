@@ -376,6 +376,7 @@
                 if (order.status === 'completed') {
                     totalCompletedCount++;
                     totalCompletedAmount += (parseInt(order.final_amount) || 0);
+                    totalCompletedCost += (parseInt(order.cost) || 0);
                     count60 += (parseInt(order.extra_gifts) || 0);
 
                     const itemName = order.item_name || '';
@@ -576,7 +577,7 @@
 
             // ✨ 計算總毛利 (總實收 - 總成本)
             const totalCompletedProfit = totalCompletedAmount - totalCompletedCost;
-            
+
             document.getElementById('stat-759').innerText = count759 + ' 單位';
             document.getElementById('stat-60').innerText = count60 + ' 單位';
             
@@ -587,6 +588,8 @@
 
             document.getElementById('stat-count').innerText = totalCompletedCount + ' 筆';
             document.getElementById('stat-points').innerText = trueTotalPoints.toLocaleString() + ' 點'; 
+            document.getElementById('stat-cost').innerText = '$' + totalCompletedCost.toLocaleString();
+            document.getElementById('stat-profit').innerText = '$' + totalCompletedProfit.toLocaleString();
             document.getElementById('stat-amount').innerText = '$' + totalCompletedAmount.toLocaleString();
             
             let dateLabel = '(全部時間)';
