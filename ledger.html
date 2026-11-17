@@ -213,6 +213,11 @@
                 <input type="number" id="buy-card-qty" value="14" min="1" oninput="recalcCardPurchase()" class="apple-input w-full font-bold text-purple-800 bg-purple-50">
             </div>
 
+            <div id="card-pts-box" class="sm:col-span-2 hidden">
+                <label class="block text-xs font-bold text-purple-700 mb-1">每張點數 (預設 10200)</label>
+                <input type="number" id="buy-card-pts" value="10200" min="1" step="10" oninput="recalcCardPurchase()" class="apple-input w-full font-bold text-purple-800 bg-purple-50">
+            </div>
+
             <div class="sm:col-span-2" id="amount-col">
                 <label class="block text-xs font-bold text-gray-600 mb-1">總金額 (TWD)</label>
                 <input type="number" id="tx-amount" placeholder="金額" required min="0" class="apple-input w-full font-extrabold text-rose-600">
@@ -473,18 +478,21 @@ create policy "Allow public access to ledger_records"
         const type = document.getElementById('tx-type').value;
         const priceBox = document.getElementById('card-price-box');
         const qtyBox = document.getElementById('card-qty-box');
+        const ptsBox = document.getElementById('card-pts-box');
         const syncLabel = document.getElementById('sync-sheet-label');
         const btnSubmit = document.getElementById('btn-submit-tx');
 
         if (type === 'buy_cards') {
             priceBox.classList.remove('hidden');
             qtyBox.classList.remove('hidden');
+            ptsBox.classList.remove('hidden');
             syncLabel.classList.remove('hidden');
             btnSubmit.textContent = '🚀 確認進貨 (扣B帳 + 寫入N卡倉庫)';
             recalcCardPurchase();
         } else {
             priceBox.classList.add('hidden');
             qtyBox.classList.add('hidden');
+            ptsBox.classList.add('hidden');
             syncLabel.classList.add('hidden');
             btnSubmit.textContent = '➕ 新增金流紀錄';
             document.getElementById('tx-amount').value = '';
@@ -495,8 +503,14 @@ create policy "Allow public access to ledger_records"
     function recalcCardPurchase() {
         const price = parseInt(document.getElementById('buy-card-price').value) || 2080;
         const qty = parseInt(document.getElementById('buy-card-qty').value) || 0;
+        const ptsPerCard = parseInt(document.getElementById('buy-card-pts').value) || POINTS_PER_CARD;
         document.getElementById('tx-amount').value = price * qty;
-        document.getElementById('tx-note').value = `老闆進貨 ${qty} 張 N卡 ($${price}/張，共 ${(qty * POINTS_PER_CARD).toLocaleString()} 點)`;
+        document.getElementById('tx-note').value = `老闆進貨 ${qty} 張 N卡 ($${price}/張・每張 ${ptsPerCard.toLocaleString()} 點，共 ${(qty * ptsPerCard).toLocaleString()} 點)`;
+    }
+
+    // 讀取進貨表單的每張點數 (未填或亂填一律回到預設 10200)
+    function getBuyCardPtsPerCard() {
+        return parseInt(document.getElementById('buy-card-pts').value) || POINTS_PER_CARD;
     }
 
     // 從 Google Sheet「N卡序號倉庫」檢查 E 欄狀態 (未開卡 vs 已出貨自用卡，完全不看 I 欄)
@@ -668,6 +682,7 @@ create policy "Allow public access to ledger_records"
                     fifoBatches.push({
                         pts: pts,
                         unitCost: unitCost,
+                        perCard: (cards > 0) ? Math.round(pts / cards) : POINTS_PER_CARD, // 該批實際每張點數 (可能是 6100/1220 等非 10200 的卡)
                         label: `$${unitCost}/張`
                     });
                 }
@@ -751,7 +766,7 @@ create policy "Allow public access to ledger_records"
 
         fifoBatches.forEach(b => {
             if (b.pts > 0) {
-                const batchCost = (b.pts / POINTS_PER_CARD) * b.unitCost;
+                const batchCost = (b.pts / (b.perCard || POINTS_PER_CARD)) * b.unitCost;
                 exactRemainingCost += batchCost;
                 queuedRemainPts += b.pts;
                 if (!costGroupMap[b.unitCost]) costGroupMap[b.unitCost] = { pts: 0, cost: 0 };
@@ -970,7 +985,7 @@ create policy "Allow public access to ledger_records"
         if (tx_type === 'buy_cards') {
             const price = parseInt(document.getElementById('buy-card-price').value) || 2080;
             card_qty = parseInt(document.getElementById('buy-card-qty').value) || 0;
-            points_added = card_qty * POINTS_PER_CARD;
+            points_added = card_qty * getBuyCardPtsPerCard();
             account = 'B';
 
             // 若有勾選「同步寫入 Google Sheet N卡序號倉庫」，直接執行批量開空位 + Gmail 抓信 + 通知牧宣
