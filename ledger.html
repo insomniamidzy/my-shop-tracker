@@ -215,7 +215,7 @@
 
             <div id="card-pts-box" class="sm:col-span-2 hidden">
                 <label class="block text-xs font-bold text-purple-700 mb-1">每張點數 (預設 10200)</label>
-                <input type="number" id="buy-card-pts" value="10200" min="1" step="10" oninput="recalcCardPurchase()" class="apple-input w-full font-bold text-purple-800 bg-purple-50">
+                <input type="number" id="buy-card-pts" value="10200" min="1" step="1" oninput="recalcCardPurchase()" class="apple-input w-full font-bold text-purple-800 bg-purple-50">
             </div>
 
             <div class="sm:col-span-2" id="amount-col">
@@ -559,6 +559,7 @@ create policy "Allow public access to ledger_records"
 
             if (!ordersErr && ordersData) {
                 let cCount = 0, cRev = 0, cPts = 0, cCost = 0, dCount = 0;
+                const fallbackOrderPts = []; // ✨ 成本=0 的訂單 (舊資料)：先收集，renderAll 時用 FIFO 批次真實單價估算
                 orderDetailList = [];
                 ordersData.forEach(order => {
                     const dateStr = order.completed_at || order.created_at;
@@ -571,7 +572,9 @@ create policy "Allow public access to ledger_records"
                         const orderPts = calculateOrderPoints(order.item_name, order.extra_gifts);
                         cPts += orderPts;
                         const dbCost = parseInt(order.cost) || 0;
-                        cCost += dbCost > 0 ? dbCost : Math.round(orderPts * (2080 / POINTS_PER_CARD));
+                        // ✨ 只累加資料庫裡的真實成本 (GAS 整數滾動餘數法算出)；不再用 2080 常數硬估
+                        if (dbCost > 0) cCost += dbCost;
+                        else fallbackOrderPts.push(orderPts);
                         if (order.status === 'completed') {
                             cCount++;
                             cRev += (parseInt(order.final_amount) || 0);
@@ -589,7 +592,12 @@ create policy "Allow public access to ledger_records"
                         });
                     }
                 });
-                completedOrdersStats = { count: cCount, totalRevenue: cRev, totalConsumedPoints: cPts, totalOrderCost: cCost, deliveredCount: dCount };
+                completedOrdersStats = {
+                    count: cCount, totalRevenue: cRev, totalConsumedPoints: cPts,
+                    totalOrderCost: cCost, deliveredCount: dCount,
+                    dbCostSum: cCost,
+                    fallbackPts: [...fallbackOrderPts].reverse() // 轉成由舊到新，符合 FIFO 消耗順序
+                };
                 ordersStatsLoaded = true;
             }
 
@@ -747,6 +755,26 @@ create policy "Allow public access to ledger_records"
 
         const totalRemainPoints = totalPoolPts - consumedPts;
         const activeRemainPts = totalRemainPoints - unopenedPts;
+
+        // ✨ 舊資料成本=0 的訂單：用 FIFO 批次「真實買進單價」從佇列最前端依序估算
+        //    (取代舊版寫死的 2080 常數 —— 實際卡價可能是 2085，過去因此產生差額)
+        const fallbackPts = completedOrdersStats.fallbackPts || [];
+        if (fallbackPts.length && fifoBatches.length) {
+            let fifoEstCost = 0;
+            let bi = 0, bRem = fifoBatches[0].pts;
+            fallbackPts.forEach(fp => {
+                let need = fp;
+                while (need > 0 && bi < fifoBatches.length) {
+                    const b = fifoBatches[bi];
+                    const take = Math.min(need, bRem);
+                    fifoEstCost += (take / (b.perCard || POINTS_PER_CARD)) * b.unitCost;
+                    need -= take;
+                    bRem -= take;
+                    if (bRem <= 0) { bi++; bRem = (bi < fifoBatches.length) ? fifoBatches[bi].pts : 0; }
+                }
+            });
+            completedOrdersStats.totalOrderCost = (completedOrdersStats.dbCostSum || 0) + Math.round(fifoEstCost);
+        }
 
         // ✨ 核心：直接從 FIFO 批次佇列由舊到新扣掉「已完成訂單消耗點數 (consumedPts)」
         let ptsToDeduct = consumedPts;
@@ -998,6 +1026,7 @@ create policy "Allow public access to ledger_records"
                         body: JSON.stringify({
                             price: Number(price),
                             quantity: Number(card_qty),
+                            points: getBuyCardPtsPerCard(), // H欄總點數同步寫入倉庫
                             operator: operator,
                             notifyMuxuan: shouldNotifyMuxuan
                         })
