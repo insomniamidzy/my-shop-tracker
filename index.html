@@ -896,6 +896,23 @@
                 const GAS_URL = 'https://script.google.com/macros/s/AKfycbzpo2NDhA91p09X_oRQeYJHzC6oZde--QIirxEXVmNC69uBfrr1WE8B0Y0iUhq3KHUt/exec'; 
 
                 if (newStatus === 'delivered') {
+                    // ✨ 通知牧宣：葉子已切換為「已派發」，請確認後改成「已完成」入 A 帳
+                    fetch(GAS_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({
+                            type: 'delivered_notify',
+                            orderData: {
+                                id: currentOrder.id,
+                                order_no: currentOrder.order_no,
+                                nickname: currentOrder.nickname,
+                                item_name: currentOrder.item_name,
+                                final_amount: currentOrder.final_amount,
+                                payment_proof_url: currentOrder.payment_proof_url
+                            }
+                        })
+                    }).catch(e => console.log('派發通知失敗', e));
+
                     if (currentCost > 0) {
                         console.log('🔒 系統攔截：此單已扣過點數與成本，跳過重複扣款。');
                     } else {
