@@ -1,0 +1,1124 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta name="robots" content="noindex, nofollow">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>工作室資產與金流管理 (整合N卡倉庫)</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            padding: 20px;
+            background: #f5f5f7;
+            color: #1d1d1f;
+        }
+        .container-box { max-width: 1280px; margin: 0 auto; }
+        .main-nav {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .nav-btn {
+            text-decoration: none;
+            padding: 10px 18px;
+            border-radius: 8px;
+            font-weight: bold;
+            color: #666;
+            background: #e8ecef;
+            transition: 0.2s;
+            font-size: 14px;
+        }
+        .nav-btn:hover { background: #d1d5db; }
+        .nav-btn.active {
+            background: #002D62;
+            color: white;
+            box-shadow: 0 4px 10px rgba(0, 45, 98, 0.2);
+        }
+        .apple-card {
+            background: #ffffff;
+            border-radius: 14px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+            border: 1px solid #e5e7eb;
+        }
+        .apple-input {
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 14px;
+            outline: none;
+            background: #fff;
+        }
+        .apple-input:focus {
+            border-color: #0071e3;
+            box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.15);
+        }
+        input[type=number]::-webkit-outer-spin-button,
+        input[type=number]::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container-box">
+    <!-- 頂部導覽列 -->
+    <div class="main-nav">
+        <a href="index.html" class="nav-btn">第五人格對帳單</a>
+        <a href="other-games.html" class="nav-btn">其他遊戲對帳單 ➔</a>
+        <a href="ledger.html" class="nav-btn active">🏛️ 帳戶與N卡進貨管理</a>
+
+        <div class="ml-auto flex flex-wrap items-center gap-2">
+            <div class="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-bold text-gray-700">
+                <span>📅 統計起算日：</span>
+                <input type="date" id="CutoffDateInput" value="2026-11-16" onchange="updateCutoffDate()" class="font-bold text-blue-700 outline-none bg-transparent cursor-pointer">
+            </div>
+
+            <button onclick="openOverrideModal()" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-lg transition">
+                ✏️ 直接改餘額/庫存
+            </button>
+            <button onclick="openGasModal()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition">
+                🔗 N卡倉庫 GAS 設定
+            </button>
+            <button onclick="openSqlModal()" id="sql-help-btn" class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg transition">
+                🗄️ 建表 SQL
+            </button>
+        </div>
+    </div>
+
+    <!-- 尚未建表提示 -->
+    <div id="db-warning-banner" class="hidden mb-5 bg-amber-50 border border-amber-300 rounded-xl p-3.5 flex items-center justify-between">
+        <span class="text-xs font-bold text-amber-900">⚠️ 尚未在 Supabase 建立 `ledger_records` 表格，請點右側複製 SQL 到 Supabase SQL Editor 執行一次即可啟用雲端同步。</span>
+        <button onclick="openSqlModal()" class="px-3 py-1.5 bg-amber-600 text-white font-bold text-xs rounded-lg">複製 SQL</button>
+    </div>
+
+    <!-- 1. 四大精簡核心卡片 -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <!-- 總資產 -->
+        <div class="apple-card p-5 border-t-4 border-t-[#002D62]">
+            <div class="text-xs font-bold text-gray-500">💎 工作室總資產 (A + B + 點卡)</div>
+            <div id="card-net-worth" class="text-3xl font-extrabold text-[#002D62] mt-2">$0</div>
+            <div id="sync-status-text" class="text-[11px] text-gray-400 mt-1">雲端即時同步中...</div>
+        </div>
+
+        <!-- 收款帳戶 A -->
+        <div class="apple-card p-5 border-t-4 border-t-emerald-600">
+            <div class="flex justify-between items-center">
+                <span class="text-xs font-bold text-emerald-800">💳 收款帳戶 A (客款入帳)</span>
+                <button onclick="openOverrideModal('A')" class="text-xs text-emerald-700 hover:underline font-bold">修改</button>
+            </div>
+            <div id="card-acc-a" class="text-3xl font-extrabold text-emerald-600 mt-2">$0</div>
+            <div class="text-[11px] text-gray-500 mt-1 flex justify-between items-center">
+                <span>11/16起訂單實收：<strong id="sub-order-rev" class="text-emerald-700">$0</strong></span>
+                <label class="cursor-pointer flex items-center gap-1 font-bold text-gray-600">
+                    <input type="checkbox" id="toggle-auto-order" checked onchange="toggleAutoOrder()" class="accent-emerald-600">計入
+                </label>
+            </div>
+        </div>
+
+        <!-- 進貨帳戶 B -->
+        <div class="apple-card p-5 border-t-4 border-t-amber-500">
+            <div class="flex justify-between items-center">
+                <span class="text-xs font-bold text-amber-800">🏦 進貨帳戶 B (買N卡專用)</span>
+                <button onclick="openOverrideModal('B')" class="text-xs text-amber-700 hover:underline font-bold">修改</button>
+            </div>
+            <div id="card-acc-b" class="text-3xl font-extrabold text-amber-600 mt-2">$0</div>
+            <div class="text-[11px] text-gray-500 mt-1">由帳戶 A 提款轉入買卡</div>
+        </div>
+
+        <!-- N卡序號倉庫 & 剩餘點數估值 -->
+        <div class="apple-card p-5 border-t-4 border-t-purple-600">
+            <div class="flex justify-between items-center">
+                <span class="text-xs font-bold text-purple-800">📦 N卡庫存真實剩餘成本 (FIFO)</span>
+                <div class="flex items-center gap-2">
+                    <button onclick="fetchWarehouseStats(true)" class="text-[11px] bg-purple-100 hover:bg-purple-200 text-purple-800 px-2 py-0.5 rounded font-bold">🔄 同步倉庫</button>
+                    <button onclick="openOverrideModal('PTS')" class="text-xs text-purple-700 hover:underline font-bold">校正</button>
+                </div>
+            </div>
+            <div class="flex items-baseline gap-2 mt-2">
+                <div id="card-inv-val" class="text-3xl font-extrabold text-purple-700">$0</div>
+                <span id="card-inv-pts" class="text-xs font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded">總庫存 0 點</span>
+            </div>
+            <!-- 倉庫開卡/未開卡明細 (依每次下單真實成本 FIFO 依序扣除) -->
+            <div id="warehouse-detail-box" class="mt-2 pt-2 border-t border-gray-100 text-[11px] text-gray-600 space-y-1">
+                <div class="flex justify-between">
+                    <span>🗃️ 未開卡 (E欄庫存/空白)：</span>
+                    <strong id="wh-unopened-cards" class="text-indigo-600">0 張 (0 點)</strong>
+                </div>
+                <div class="flex justify-between">
+                    <span>🔓 已開自用卡 (E已出貨+G自用)：</span>
+                    <strong id="wh-opened-cards" class="text-purple-700">0 張 (0 點)</strong>
+                </div>
+                <div class="flex justify-between text-gray-500">
+                    <span>📉 已派發+已完成訂單消耗：</span>
+                    <strong id="wh-consumed-pts" class="text-rose-600">-0 點</strong>
+                </div>
+                <div class="flex justify-between pt-1 border-t border-dashed border-gray-200 font-bold text-emerald-800">
+                    <span>✨ 已開卡剩餘可用點數：</span>
+                    <span id="wh-active-remain-pts">0 點</span>
+                </div>
+                <div class="flex justify-between text-[10px] text-purple-700 font-semibold pt-0.5">
+                    <span>🧾 現存批次成本：</span>
+                    <span id="wh-cost-breakdown" class="text-right">尚無批次</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. 老闆進貨 / 轉帳整合登記區 (結合 index2.html 寫入 Google Sheet 功能) -->
+    <div class="apple-card p-5 mb-6 border-l-4 border-l-[#28a745]">
+        <div class="flex flex-wrap justify-between items-center mb-3 gap-2">
+            <h3 class="text-sm font-extrabold text-gray-800 flex items-center gap-2">
+                <span>💸 老闆進貨買卡 / 帳戶轉帳登記</span>
+                <span class="text-xs font-normal text-gray-500">(選「買點卡入庫」會直接同步寫入 Google Sheet N卡序號倉庫)</span>
+            </h3>
+            <div id="gas-status-badge" class="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">
+                ✅ 已連結 N卡倉庫 GAS
+            </div>
+        </div>
+
+        <form id="tx-form" onsubmit="handleTransactionSubmit(event)" class="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+            <div class="sm:col-span-2">
+                <label class="block text-xs font-bold text-gray-600 mb-1">日期</label>
+                <input type="date" id="tx-date" required class="apple-input w-full">
+            </div>
+
+            <div class="sm:col-span-3">
+                <label class="block text-xs font-bold text-gray-600 mb-1">動作類型</label>
+                <select id="tx-type" onchange="handleTxTypeChange()" class="apple-input w-full font-bold text-gray-800">
+                    <option value="buy_cards">🛒 帳戶B 買點卡入庫 (寫入N卡倉庫)</option>
+                    <option value="transfer_a_to_b">🔄 帳戶A 提款轉帳至 帳戶B</option>
+                    <option value="withdraw_a">📤 帳戶A 提款 / 扣款</option>
+                    <option value="income">💰 帳戶A 手動入帳</option>
+                    <option value="adjust_b">🏦 帳戶B 手動入帳</option>
+                    <option value="withdraw_b">📤 帳戶B 其他扣款</option>
+                </select>
+            </div>
+
+            <!-- 當選擇「買點卡入庫」時顯示：單張成本 + 購買張數 (完全對應 index2.html) -->
+            <div id="card-price-box" class="sm:col-span-2">
+                <label class="block text-xs font-bold text-purple-700 mb-1">序號成本 (元/張)</label>
+                <input type="number" id="buy-card-price" value="2085" min="1" oninput="recalcCardPurchase()" class="apple-input w-full font-bold text-purple-800 bg-purple-50">
+            </div>
+
+            <div id="card-qty-box" class="sm:col-span-1">
+                <label class="block text-xs font-bold text-purple-700 mb-1">購買張數</label>
+                <input type="number" id="buy-card-qty" value="14" min="1" oninput="recalcCardPurchase()" class="apple-input w-full font-bold text-purple-800 bg-purple-50">
+            </div>
+
+            <div class="sm:col-span-2" id="amount-col">
+                <label class="block text-xs font-bold text-gray-600 mb-1">總金額 (TWD)</label>
+                <input type="number" id="tx-amount" placeholder="金額" required min="0" class="apple-input w-full font-extrabold text-rose-600">
+            </div>
+
+            <div class="sm:col-span-2" id="note-col">
+                <label class="block text-xs font-bold text-gray-600 mb-1">備註說明</label>
+                <input type="text" id="tx-note" placeholder="例如：老闆批發進貨" required class="apple-input w-full">
+            </div>
+
+            <div class="sm:col-span-12 lg:col-span-12 flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-gray-100 mt-1">
+                <div class="flex flex-wrap items-center gap-3 text-xs text-gray-600">
+                    <span>經手人：</span>
+                    <select id="tx-operator" class="border border-gray-300 rounded px-2 py-1 font-bold text-gray-700 bg-white">
+                        <option value="以晨">以晨</option>
+                        <option value="葉子">葉子</option>
+                        <option value="牧宣">牧宣</option>
+                        <option value="沐恩">沐恩</option>
+                    </select>
+
+                    <label id="sync-sheet-label" class="flex items-center gap-1 cursor-pointer select-none font-bold text-purple-700 bg-purple-50 px-2.5 py-1 rounded border border-purple-200">
+                        <input type="checkbox" id="sync-to-sheet" checked class="accent-purple-600">
+                        <span>🚀 同步在「N卡序號倉庫」建立庫存空位並掃描 Gmail 信箱</span>
+                    </label>
+
+                    <label class="flex items-center gap-1 cursor-pointer select-none font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded border border-blue-200">
+                        <input type="checkbox" id="notify-muxuan-chk" checked class="accent-blue-600">
+                        <span>🔔 Discord 通知牧宣</span>
+                    </label>
+
+                    <button type="button" onclick="resetAllToZero()" class="text-rose-600 hover:underline font-bold ml-2">
+                        🧹 一鍵歸零重算
+                    </button>
+                </div>
+
+                <button type="submit" id="btn-submit-tx" class="py-2.5 px-6 bg-[#28a745] hover:bg-[#218838] text-white font-bold text-sm rounded-lg shadow-sm transition">
+                    🚀 確認送出並寫入倉庫
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- 3. 乾淨的流水帳明細表 -->
+    <div class="apple-card p-5">
+        <div class="flex flex-wrap justify-between items-center mb-3 gap-2">
+            <div class="flex items-center gap-2">
+                <h3 class="text-sm font-extrabold text-gray-800">📋 帳戶 A/B 與進貨流水帳明細</h3>
+                <span id="auto-order-summary-pill" class="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 rounded-full font-bold">
+                    11/16起已完成訂單：0 筆
+                </span>
+            </div>
+            <button onclick="fetchAllCloudData()" class="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg">
+                🔄 重新整理
+            </button>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-sm">
+                <thead>
+                    <tr class="bg-gray-50 border-b border-gray-200 text-xs font-bold text-gray-500">
+                        <th class="py-2.5 px-3">日期</th>
+                        <th class="py-2.5 px-3">類型</th>
+                        <th class="py-2.5 px-3">帳戶變動</th>
+                        <th class="py-2.5 px-3">點數變動</th>
+                        <th class="py-2.5 px-3">經手人</th>
+                        <th class="py-2.5 px-3">備註說明</th>
+                        <th class="py-2.5 px-3 text-right">金額 (TWD)</th>
+                        <th class="py-2.5 px-3 text-center">刪除</th>
+                    </tr>
+                </thead>
+                <tbody id="tx-table-body" class="divide-y divide-gray-100">
+                    <tr><td colspan="8" class="py-8 text-center text-gray-400">載入資料中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal 1: 直接修改餘額與庫存 -->
+<div id="override-modal" class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl">
+        <div class="flex justify-between items-center border-b pb-3 mb-4">
+            <h3 class="text-base font-extrabold text-gray-900">✏️ 直接設定目前真實餘額 / 庫存</h3>
+            <button onclick="closeOverrideModal()" class="text-gray-400 hover:text-gray-700 font-bold">✕</button>
+        </div>
+        <form onsubmit="submitOverrideBalances(event)" class="space-y-4">
+            <div>
+                <label class="block text-xs font-bold text-emerald-800 mb-1">💳 收款帳戶 A 目前真實餘額 (TWD)</label>
+                <input type="number" id="override-acc-a" required class="apple-input w-full font-extrabold text-lg text-emerald-700">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-amber-800 mb-1">🏦 進貨帳戶 B 目前真實餘額 (TWD)</label>
+                <input type="number" id="override-acc-b" required class="apple-input w-full font-extrabold text-lg text-amber-700">
+            </div>
+
+            <div class="p-3.5 bg-purple-50/70 rounded-xl border border-purple-200 space-y-3">
+                <div class="text-xs font-extrabold text-purple-900">📦 點卡與剩餘點數分批成本盤點</div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[11px] font-bold text-indigo-800 mb-1">🗃️ 未開卡張數 (10200點/張)</label>
+                        <input type="number" id="override-unopened-cards" value="14" required min="0" oninput="recalcOverrideTotalPts()" class="apple-input w-full font-extrabold text-base text-indigo-700">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-indigo-800 mb-1">💵 未開卡單張成本 (元)</label>
+                        <input type="number" id="override-unopened-price" value="2085" required min="1" oninput="recalcOverrideTotalPts()" class="apple-input w-full font-extrabold text-base text-indigo-700">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[11px] font-bold text-emerald-800 mb-1">✨ 已開卡剩餘點數 (零頭)</label>
+                        <input type="number" id="override-active-pts" value="590" required oninput="recalcOverrideTotalPts()" class="apple-input w-full font-extrabold text-base text-emerald-700">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-emerald-800 mb-1">💵 該批卡原單張成本 (元)</label>
+                        <input type="number" id="override-active-price" value="2080" required min="1" oninput="recalcOverrideTotalPts()" class="apple-input w-full font-extrabold text-base text-emerald-700">
+                    </div>
+                </div>
+                <div class="flex justify-between items-center pt-2 border-t border-purple-200/60 text-xs">
+                    <span class="text-purple-700 font-bold">合計總庫存與精準估值：</span>
+                    <strong id="override-total-pts-preview" class="text-purple-900 font-extrabold text-sm">143,390 點 (估值 $29,310)</strong>
+                </div>
+                <input type="hidden" id="override-pts" value="143390">
+            </div>
+
+            <div class="flex justify-end gap-2 pt-2">
+                <button type="button" onclick="closeOverrideModal()" class="px-4 py-2 bg-gray-100 rounded-lg text-xs font-bold text-gray-600">取消</button>
+                <button type="submit" class="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold">✅ 儲存更新</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal 2: N卡序號倉庫 GAS 讀取與寫入說明 -->
+<div id="gas-modal" class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl">
+        <div class="flex justify-between items-center border-b pb-3 mb-4">
+            <h3 class="text-base font-extrabold text-gray-900">🔗 N卡序號倉庫 (Google Apps Script) 完整整合說明</h3>
+            <button onclick="closeGasModal()" class="text-gray-400 hover:text-gray-700 font-bold">✕</button>
+        </div>
+        <div class="space-y-3 text-xs text-gray-600">
+            <p class="font-bold text-emerald-700">✅ 我已經幫您把原本的「FIFO 智能扣點、時光倒流退點、Gmail 自動抓序號、Discord 通知牧宣與葉子」加上「讀取倉庫未開卡/已開卡 I 欄剩餘點數」全部合成一份完整的 <code class="bg-gray-100 px-1 rounded">Code.gs</code> 檔案了！</p>
+            <p>您只需要到右側檔案列表切換到 <strong>「N卡序號倉庫完整整合後端腳本 (Code.gs)」</strong>，整份複製並覆蓋到您的 Google Apps Script 編輯器，然後點擊右上角 <strong>「部署 ➔ 管理部署作業 ➔ 編輯 (鉛筆圖示) ➔ 版本選『新版本』 ➔ 部署」</strong> 即可！（網址不會改變）</p>
+            <div class="flex justify-end items-center pt-2">
+                <button onclick="closeGasModal()" class="px-4 py-2 bg-indigo-600 text-white font-bold rounded-lg">我知道了</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal 3: Supabase 建表 SQL -->
+<div id="sql-modal" class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl">
+        <div class="flex justify-between items-center border-b pb-3 mb-4">
+            <h3 class="text-base font-extrabold text-gray-900">🗄️ Supabase 建表 SQL 指令</h3>
+            <button onclick="closeSqlModal()" class="text-gray-400 hover:text-gray-700 font-bold">✕</button>
+        </div>
+        <pre id="sql-code-block" class="bg-gray-900 text-emerald-400 p-4 rounded-xl text-xs font-mono overflow-x-auto leading-relaxed">create table if not exists public.ledger_records (
+  id bigint generated by default as identity primary key,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  tx_date date not null,
+  tx_type text not null,
+  account text not null,
+  amount integer not null,
+  card_qty integer default 0,
+  points_added integer default 0,
+  operator text default '系統',
+  note text
+);
+
+alter table public.ledger_records enable row level security;
+drop policy if exists "Allow public access to ledger_records" on public.ledger_records;
+create policy "Allow public access to ledger_records"
+  on public.ledger_records for all
+  using (true)
+  with check (true);</pre>
+        <div class="mt-4 flex justify-end gap-2">
+            <button onclick="copySqlCode()" class="px-4 py-2 bg-amber-600 text-white font-bold text-xs rounded-lg">📋 複製 SQL</button>
+            <button onclick="closeSqlModal()" class="px-4 py-2 bg-gray-100 text-gray-700 font-bold text-xs rounded-lg">關閉</button>
+        </div>
+    </div>
+</div>
+
+<!-- Toast 通知 -->
+<div id="toast" class="fixed bottom-6 right-6 z-50 hidden bg-gray-900 text-white px-5 py-3 rounded-xl shadow-lg text-xs font-bold flex items-center gap-2">
+    <span id="toast-msg">訊息</span>
+</div>
+
+<script>
+    // 1. Supabase 設定
+    const SUPABASE_URL = 'https://sizlxeoconbuxkyrtnqd.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpemx4ZW9jb25idXhreXJ0bnFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3NTg4OTgsImV4cCI6MjA5NDMzNDg5OH0.Lu6f3HgJ_wsM-pLhK0j3tNbK7hu_1E19rj63iVn0qqI';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // 2. 整合自 index2.html 的 N卡序號倉庫 GAS 網址
+    const WAREHOUSE_GAS_URL = 'https://script.google.com/macros/s/AKfycbzpo2NDhA91p09X_oRQeYJHzC6oZde--QIirxEXVmNC69uBfrr1WE8B0Y0iUhq3KHUt/exec';
+
+    const POINTS_PER_CARD = 10200;
+    const COST_PER_POINT = 2080 / 10200;
+
+    let cutoffDate = localStorage.getItem('studio_cutoff_date') || '2026-11-16';
+    let includeAutoOrderRevenue = localStorage.getItem('include_auto_order_rev') !== 'false';
+
+    let cloudLedgerRecords = [];
+    let completedOrdersStats = { count: 0, totalRevenue: 0, totalConsumedPoints: 0, totalOrderCost: 0, deliveredCount: 0 };
+    let warehouseStats = {
+        connected: false,
+        unopenedSelfCards: 0,
+        unopenedCostTotal: 0,
+        openedSelfCards: 0,
+        openedCostTotal: 0
+    };
+    let currentCalculated = {
+        accA: 0,
+        accB: 0,
+        unopenedCards: 14,
+        unopenedUnitCost: 2085,
+        activeRemainPts: 590,
+        activeUnitCost: 2080,
+        remainPts: 143390,
+        invVal: 29310
+    };
+
+    window.onload = function() {
+        document.getElementById('CutoffDateInput').value = cutoffDate;
+        document.getElementById('toggle-auto-order').checked = includeAutoOrderRevenue;
+        document.getElementById('tx-date').value = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+
+        handleTxTypeChange();
+        fetchAllCloudData();
+        fetchWarehouseStats(false);
+
+        setInterval(() => {
+            if (!document.hidden) {
+                fetchAllCloudData();
+                fetchWarehouseStats(false);
+            }
+        }, 15000);
+    };
+
+    function updateCutoffDate() {
+        cutoffDate = document.getElementById('CutoffDateInput').value || '2026-11-16';
+        localStorage.setItem('studio_cutoff_date', cutoffDate);
+        fetchAllCloudData();
+        fetchWarehouseStats(false);
+    }
+
+    function toggleAutoOrder() {
+        includeAutoOrderRevenue = document.getElementById('toggle-auto-order').checked;
+        localStorage.setItem('include_auto_order_rev', includeAutoOrderRevenue);
+        renderAll();
+    }
+
+    // 切換動作類型時，動態顯示/隱藏「序號成本」與「購買張數」
+    function handleTxTypeChange() {
+        const type = document.getElementById('tx-type').value;
+        const priceBox = document.getElementById('card-price-box');
+        const qtyBox = document.getElementById('card-qty-box');
+        const syncLabel = document.getElementById('sync-sheet-label');
+        const btnSubmit = document.getElementById('btn-submit-tx');
+
+        if (type === 'buy_cards') {
+            priceBox.classList.remove('hidden');
+            qtyBox.classList.remove('hidden');
+            syncLabel.classList.remove('hidden');
+            btnSubmit.textContent = '🚀 確認進貨 (扣B帳 + 寫入N卡倉庫)';
+            recalcCardPurchase();
+        } else {
+            priceBox.classList.add('hidden');
+            qtyBox.classList.add('hidden');
+            syncLabel.classList.add('hidden');
+            btnSubmit.textContent = '➕ 新增金流紀錄';
+            document.getElementById('tx-amount').value = '';
+            document.getElementById('tx-note').value = '';
+        }
+    }
+
+    function recalcCardPurchase() {
+        const price = parseInt(document.getElementById('buy-card-price').value) || 2080;
+        const qty = parseInt(document.getElementById('buy-card-qty').value) || 0;
+        document.getElementById('tx-amount').value = price * qty;
+        document.getElementById('tx-note').value = `老闆進貨 ${qty} 張 N卡 ($${price}/張，共 ${(qty * POINTS_PER_CARD).toLocaleString()} 點)`;
+    }
+
+    // 從 Google Sheet「N卡序號倉庫」檢查 E 欄狀態 (未開卡 vs 已出貨自用卡，完全不看 I 欄)
+    async function fetchWarehouseStats(showNotification) {
+        try {
+            const res = await fetch(`${WAREHOUSE_GAS_URL}?action=stats&since=${encodeURIComponent(cutoffDate)}&t=${Date.now()}`);
+            const data = await res.json();
+            if (data && data.success && typeof data.unopenedSelfCards !== 'undefined') {
+                warehouseStats = {
+                    connected: true,
+                    unopenedSelfCards: Number(data.unopenedSelfCards) || 0,
+                    unopenedCostTotal: Number(data.unopenedCostTotal) || 0,
+                    openedSelfCards: Number(data.openedSelfCards) || 0,
+                    openedCostTotal: Number(data.openedCostTotal) || 0
+                };
+                if (showNotification) showToast('✅ 已同步 N卡倉庫最新「未開卡」與「已開自用卡」張數！');
+                renderAll();
+                return;
+            }
+        } catch (err) {
+            // 若 GAS 尚未更新，自動退回以本頁進貨紀錄計算
+        }
+        if (showNotification) {
+            openGasModal();
+        }
+    }
+
+    // 讀取 Supabase 訂單與金流紀錄
+    async function fetchAllCloudData() {
+        try {
+            // 1. 讀取訂單：已派發(delivered)先扣點、已完成(completed)才入 A 帳 (點數只扣一次不重複)
+            const { data: ordersData, error: ordersErr } = await supabaseClient
+                .from('orders')
+                .select('id, status, final_amount, cost, item_name, extra_gifts, completed_at, created_at')
+                .in('status', ['delivered', 'completed']);
+
+            if (!ordersErr && ordersData) {
+                let cCount = 0, cRev = 0, cPts = 0, cCost = 0, dCount = 0;
+                ordersData.forEach(order => {
+                    const dateStr = order.completed_at || order.created_at;
+                    let includeOrder = true;
+                    if (dateStr && cutoffDate) {
+                        const twDate = new Date(dateStr).toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+                        if (twDate < cutoffDate) includeOrder = false;
+                    }
+                    if (includeOrder) {
+                        const orderPts = calculateOrderPoints(order.item_name, order.extra_gifts);
+                        cPts += orderPts;
+                        const dbCost = parseInt(order.cost) || 0;
+                        cCost += dbCost > 0 ? dbCost : Math.round(orderPts * (2080 / POINTS_PER_CARD));
+                        if (order.status === 'completed') {
+                            cCount++;
+                            cRev += (parseInt(order.final_amount) || 0);
+                        } else {
+                            dCount++; // 已派發：點數已扣，但錢還沒入 A 帳
+                        }
+                    }
+                });
+                completedOrdersStats = { count: cCount, totalRevenue: cRev, totalConsumedPoints: cPts, totalOrderCost: cCost, deliveredCount: dCount };
+            }
+
+            // 2. 讀取金流表 ledger_records
+            const { data: ledgerData, error: ledgerErr } = await supabaseClient
+                .from('ledger_records')
+                .select('*')
+                .gte('tx_date', cutoffDate)
+                .order('tx_date', { ascending: false })
+                .order('id', { ascending: false });
+
+            if (ledgerErr) {
+                document.getElementById('db-warning-banner').classList.remove('hidden');
+                const localBackup = JSON.parse(localStorage.getItem('studio_ledger_fallback') || '[]');
+                cloudLedgerRecords = localBackup.filter(r => r.tx_date >= cutoffDate);
+            } else {
+                document.getElementById('db-warning-banner').classList.add('hidden');
+                cloudLedgerRecords = ledgerData || [];
+            }
+
+            const nowStr = new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            document.getElementById('sync-status-text').textContent = `最後同步：${nowStr}`;
+            renderAll();
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    function calculateOrderPoints(itemName, extraGifts) {
+        let pts = (parseInt(extraGifts) || 0) * 120;
+        if (!itemName) return pts;
+        const items = itemName.split('+').map(i => i.trim());
+        const eventMap = {
+            "八週年特惠禮包 (956回聲+5精華)": 1220,
+            "八週年優惠禮包1 (1009回聲+3精華)": 1840,
+            "八週年優惠禮包2 (3448回聲+7精華)": 6100,
+            "八週年優惠禮包3 (6918回聲+15精華)": 12000,
+            "八週年禮包大全套 (四款全包)": 21160
+        };
+        items.forEach(item => {
+            const qtyMatch = item.match(/[xX*]\s*(\d+)/);
+            const qty = qtyMatch ? parseInt(qtyMatch[1]) : 1;
+            const baseItem = item.replace(/\s*[xX*]\s*\d+$/, '').trim();
+            if (eventMap[baseItem]) {
+                pts += eventMap[baseItem] * qty;
+            } else {
+                const echoMatch = baseItem.match(/(\d+)\s*回聲/);
+                if (echoMatch) {
+                    const echo = parseInt(echoMatch[1]);
+                    if (echo === 6072) pts += 9760 * qty;
+                    else if (echo === 3795) pts += 6100 * qty;
+                    else if (echo % 759 === 0) pts += (echo / 759) * 1220 * qty;
+                    else if (echo === 203) pts += 370 * qty;
+                    else if (echo === 60) pts += 120 * qty;
+                    else pts += Math.round((echo / 759) * 1220) * qty;
+                }
+            }
+        });
+        return pts;
+    }
+
+    function renderAll() {
+        let manualInA = 0, transferToB = 0, withdrawA = 0;
+        let manualInB = 0, buyCardsCost = 0, withdrawB = 0;
+        let totalAddedPoints = 0, totalBoughtCards = 0;
+        let manualUnopenedAdjust = 0;
+        let latestUnopenedUnitCost = 2085;
+        let latestActiveUnitCost = 2080;
+
+        // 建立 FIFO 批次真實成本佇列 (每一批皆記錄：剩餘點數 pts、該批買進單張價格 unitCost)
+        let fifoBatches = [];
+
+        // 依時間由舊到新排列，讓先買進的卡排在佇列最前面優先扣點
+        const sortedRecords = [...cloudLedgerRecords].reverse();
+        sortedRecords.forEach(r => {
+            const amt = parseInt(r.amount) || 0;
+            const pts = parseInt(r.points_added) || 0;
+            const cards = parseInt(r.card_qty) || 0;
+            if (r.tx_type === 'income') manualInA += amt;
+            else if (r.tx_type === 'transfer_a_to_b') transferToB += amt;
+            else if (r.tx_type === 'withdraw_a') withdrawA += amt;
+            else if (r.tx_type === 'adjust_b') manualInB += amt;
+            else if (r.tx_type === 'buy_cards') {
+                buyCardsCost += amt;
+                totalAddedPoints += pts;
+                totalBoughtCards += cards;
+                const unitCost = (cards > 0 && amt > 0) ? Math.round(amt / cards) : 2085;
+                latestUnopenedUnitCost = unitCost;
+                if (pts > 0) {
+                    fifoBatches.push({
+                        pts: pts,
+                        unitCost: unitCost,
+                        label: `$${unitCost}/張`
+                    });
+                }
+            } else if (r.tx_type === 'withdraw_b') {
+                withdrawB += amt;
+                totalAddedPoints += pts;
+                if (r.operator === '盤點校正' && r.note && r.note.includes('未開卡')) {
+                    manualUnopenedAdjust += cards;
+                    // 若遇到盤點設定紀錄，直接重設當時的精準分批佇列基準
+                    // 格式支援 [BATCH:activePts@activePrice,unopenedCards@unopenedPrice] 或舊版 [VAL:...|U:2085|A:2080]
+                    const batchMatch = r.note.match(/\[BATCH:(-?\d+)@(\d+),(\d+)@(\d+)\]/);
+                    const valMatch = r.note.match(/\[VAL:(-?\d+)\|U:(\d+)\|A:(\d+)\]/);
+                    if (batchMatch) {
+                        const aPts = parseInt(batchMatch[1]) || 0;
+                        const aPrice = parseInt(batchMatch[2]) || 2080;
+                        const uCards = parseInt(batchMatch[3]) || 0;
+                        const uPrice = parseInt(batchMatch[4]) || 2085;
+                        latestActiveUnitCost = aPrice;
+                        latestUnopenedUnitCost = uPrice;
+                        // 重置 FIFO 佇列為盤點當下的兩批真實庫存 (再補回盤點當下已扣過的訂單點數，讓後續總消耗統一由頭扣起)
+                        fifoBatches = [];
+                        const consumedAtReset = parseInt(r.note.match(/\[CONSUMED:(\d+)\]/)?.[1]) || 0;
+                        if (consumedAtReset > 0) {
+                            fifoBatches.push({ pts: consumedAtReset, unitCost: aPrice, label: `$${aPrice}/張` });
+                        }
+                        if (aPts > 0) {
+                            fifoBatches.push({ pts: aPts, unitCost: aPrice, label: `$${aPrice}/張` });
+                        }
+                        if (uCards > 0) {
+                            fifoBatches.push({ pts: uCards * POINTS_PER_CARD, unitCost: uPrice, label: `$${uPrice}/張` });
+                        }
+                    } else if (valMatch) {
+                        latestUnopenedUnitCost = parseInt(valMatch[2]) || 2085;
+                        latestActiveUnitCost = parseInt(valMatch[3]) || 2080;
+                        if (pts !== 0) {
+                            fifoBatches.push({ pts: pts, unitCost: latestUnopenedUnitCost, label: `$${latestUnopenedUnitCost}/張` });
+                        }
+                    }
+                }
+            }
+        });
+
+        const autoOrderRev = includeAutoOrderRevenue ? completedOrdersStats.totalRevenue : 0;
+        const balanceA = autoOrderRev + manualInA - transferToB - withdrawA;
+        const balanceB = transferToB + manualInB - buyCardsCost - withdrawB;
+
+        const consumedPts = completedOrdersStats.totalConsumedPoints;
+        document.getElementById('wh-consumed-pts').textContent = `-${consumedPts.toLocaleString()} 點`;
+
+        let unopenedCards = totalBoughtCards + manualUnopenedAdjust;
+        let openedCards = 0;
+
+        if (warehouseStats.connected) {
+            unopenedCards = warehouseStats.unopenedSelfCards + manualUnopenedAdjust;
+            openedCards = warehouseStats.openedSelfCards;
+        }
+
+        const unopenedPts = unopenedCards * POINTS_PER_CARD;
+        const totalPoolPts = warehouseStats.connected
+            ? ((warehouseStats.unopenedSelfCards + warehouseStats.openedSelfCards) * POINTS_PER_CARD) + totalAddedPoints - (totalBoughtCards * POINTS_PER_CARD)
+            : totalAddedPoints;
+
+        const totalRemainPoints = totalPoolPts - consumedPts;
+        const activeRemainPts = totalRemainPoints - unopenedPts;
+
+        // ✨ 核心：直接從 FIFO 批次佇列由舊到新扣掉「已完成訂單消耗點數 (consumedPts)」
+        let ptsToDeduct = consumedPts;
+        for (let i = 0; i < fifoBatches.length; i++) {
+            if (ptsToDeduct <= 0) break;
+            if (fifoBatches[i].pts > 0) {
+                const taken = Math.min(fifoBatches[i].pts, ptsToDeduct);
+                fifoBatches[i].pts -= taken;
+                ptsToDeduct -= taken;
+            }
+        }
+
+        // 計算扣完訂單後，佇列裡每一批剩餘點數對應的「實際下單金額成本」
+        let exactRemainingCost = 0;
+        const costGroupMap = {}; // 依單價歸納剩餘點數，方便顯示明細
+        let queuedRemainPts = 0;
+
+        fifoBatches.forEach(b => {
+            if (b.pts > 0) {
+                const batchCost = (b.pts / POINTS_PER_CARD) * b.unitCost;
+                exactRemainingCost += batchCost;
+                queuedRemainPts += b.pts;
+                if (!costGroupMap[b.unitCost]) costGroupMap[b.unitCost] = { pts: 0, cost: 0 };
+                costGroupMap[b.unitCost].pts += b.pts;
+                costGroupMap[b.unitCost].cost += batchCost;
+            }
+        });
+
+        // 若倉庫有直接回傳卡片但尚未進佇列的差額點數，以最新單價補足
+        const diffFromQueue = totalRemainPoints - queuedRemainPts;
+        if (diffFromQueue !== 0) {
+            const fallbackCost = (diffFromQueue / POINTS_PER_CARD) * latestUnopenedUnitCost;
+            exactRemainingCost += fallbackCost;
+            if (diffFromQueue > 0) {
+                if (!costGroupMap[latestUnopenedUnitCost]) costGroupMap[latestUnopenedUnitCost] = { pts: 0, cost: 0 };
+                costGroupMap[latestUnopenedUnitCost].pts += diffFromQueue;
+                costGroupMap[latestUnopenedUnitCost].cost += fallbackCost;
+            }
+        }
+
+        const invValuation = Math.round(exactRemainingCost);
+
+        // 產生各單價批次的剩餘明細字串 (例如：$2080剩590點($120) + $2085剩142,800點($29,190))
+        const breakdownParts = Object.keys(costGroupMap).map(price => {
+            const g = costGroupMap[price];
+            const cardsEq = (g.pts / POINTS_PER_CARD);
+            const countText = Number.isInteger(cardsEq) ? `${cardsEq}張` : `${g.pts.toLocaleString()}點`;
+            return `@$${price} 剩 ${countText} ($${Math.round(g.cost).toLocaleString()})`;
+        });
+
+        document.getElementById('wh-unopened-cards').textContent = `${unopenedCards} 張 (${unopenedPts.toLocaleString()} 點)`;
+        document.getElementById('wh-opened-cards').textContent = `${openedCards} 張 (${(openedCards * POINTS_PER_CARD).toLocaleString()} 點)`;
+        document.getElementById('wh-active-remain-pts').textContent = `${activeRemainPts.toLocaleString()} 點`;
+        document.getElementById('wh-cost-breakdown').textContent =
+            breakdownParts.length > 0 ? breakdownParts.join(' ＋ ') : '目前無庫存批次';
+
+        const netWorth = balanceA + balanceB + invValuation;
+
+        currentCalculated = {
+            accA: balanceA,
+            accB: balanceB,
+            unopenedCards: unopenedCards,
+            unopenedUnitCost: latestUnopenedUnitCost,
+            activeRemainPts: activeRemainPts,
+            activeUnitCost: latestActiveUnitCost,
+            remainPts: totalRemainPoints,
+            invVal: invValuation
+        };
+
+        document.getElementById('card-net-worth').textContent = '$' + netWorth.toLocaleString();
+        document.getElementById('card-acc-a').textContent = '$' + balanceA.toLocaleString();
+        document.getElementById('sub-order-rev').textContent = '$' + completedOrdersStats.totalRevenue.toLocaleString();
+        document.getElementById('card-acc-b').textContent = '$' + balanceB.toLocaleString();
+        document.getElementById('card-inv-val').textContent = '$' + invValuation.toLocaleString();
+        document.getElementById('card-inv-pts').textContent = `總庫存 ${totalRemainPoints.toLocaleString()} 點`;
+
+        const dCount = completedOrdersStats.deliveredCount || 0;
+        document.getElementById('auto-order-summary-pill').textContent =
+            `${cutoffDate.slice(5)}起 已完成 ${completedOrdersStats.count} 筆・已派發 ${dCount} 筆 (實收 $${completedOrdersStats.totalRevenue.toLocaleString()} / 消耗 ${consumedPts.toLocaleString()} 點)`;
+
+        renderTable();
+    }
+
+    function renderTable() {
+        const tbody = document.getElementById('tx-table-body');
+        tbody.innerHTML = '';
+
+        // 第一列固定顯示已完成訂單彙整
+        if (includeAutoOrderRevenue) {
+            const autoTr = document.createElement('tr');
+            autoTr.className = 'bg-emerald-50/60 font-semibold';
+            autoTr.innerHTML = `
+                <td class="py-2.5 px-3 text-xs text-emerald-800">${cutoffDate.slice(5)} 起</td>
+                <td class="py-2.5 px-3"><span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded text-xs font-bold">📊 已完成 ${completedOrdersStats.count} 筆 + 已派發 ${completedOrdersStats.deliveredCount || 0} 筆</span></td>
+                <td class="py-2.5 px-3 text-xs text-emerald-700 font-bold">帳戶 A 入帳</td>
+                <td class="py-2.5 px-3 text-xs text-rose-600 font-bold">-${completedOrdersStats.totalConsumedPoints.toLocaleString()} 點</td>
+                <td class="py-2.5 px-3 text-xs text-gray-500">系統自動</td>
+                <td class="py-2.5 px-3 text-xs text-gray-600">已派發即扣點，完成後實收才入 A 帳</td>
+                <td class="py-2.5 px-3 text-right font-extrabold text-emerald-700">+$${completedOrdersStats.totalRevenue.toLocaleString()}</td>
+                <td class="py-2.5 px-3 text-center text-xs text-gray-400">自動</td>
+            `;
+            tbody.appendChild(autoTr);
+        }
+
+        const typeBadge = {
+            'transfer_a_to_b': '<span class="px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-xs font-bold">🔄 A 轉帳至 B</span>',
+            'buy_cards': '<span class="px-2 py-0.5 bg-purple-100 text-purple-800 rounded text-xs font-bold">🛒 B 買卡寫入倉庫</span>',
+            'withdraw_a': '<span class="px-2 py-0.5 bg-rose-100 text-rose-800 rounded text-xs font-bold">📤 A 提款/扣款</span>',
+            'income': '<span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded text-xs font-bold">💰 A 手動入帳</span>',
+            'adjust_b': '<span class="px-2 py-0.5 bg-amber-100 text-amber-800 rounded text-xs font-bold">🏦 B 手動入帳</span>',
+            'withdraw_b': '<span class="px-2 py-0.5 bg-gray-100 text-gray-800 rounded text-xs font-bold">📤 B 扣款/校正</span>'
+        };
+
+        cloudLedgerRecords.forEach(r => {
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-gray-50';
+            const amt = parseInt(r.amount) || 0;
+            const pts = parseInt(r.points_added) || 0;
+
+            let accText = '帳戶 A';
+            let amtFormatted = `+$${amt.toLocaleString()}`;
+            let amtColor = 'text-emerald-600';
+
+            if (r.tx_type === 'transfer_a_to_b') {
+                accText = '帳戶 A ➔ B';
+                amtFormatted = `$${amt.toLocaleString()}`;
+                amtColor = 'text-blue-600';
+            } else if (r.tx_type === 'buy_cards' || r.tx_type === 'withdraw_b') {
+                accText = '帳戶 B 扣款';
+                amtFormatted = `-$${amt.toLocaleString()}`;
+                amtColor = 'text-rose-600';
+            } else if (r.tx_type === 'withdraw_a') {
+                accText = '帳戶 A 扣款';
+                amtFormatted = `-$${amt.toLocaleString()}`;
+                amtColor = 'text-rose-600';
+            } else if (r.tx_type === 'adjust_b') {
+                accText = '帳戶 B 入帳';
+                amtFormatted = `+$${amt.toLocaleString()}`;
+                amtColor = 'text-amber-600';
+            }
+
+            let ptsHtml = '<span class="text-gray-300">-</span>';
+            if (pts !== 0) {
+                ptsHtml = `<span class="font-bold ${pts > 0 ? 'text-purple-700' : 'text-rose-600'}">${pts > 0 ? '+' : ''}${pts.toLocaleString()} 點 (${r.card_qty || 0}張)</span>`;
+            }
+
+            const cleanNote = (r.note || '').replace(/\s*\[(VAL|BATCH|CONSUMED):[^\]]+\]/g, '');
+
+            tr.innerHTML = `
+                <td class="py-2.5 px-3 text-xs text-gray-600 font-mono">${r.tx_date}</td>
+                <td class="py-2.5 px-3">${typeBadge[r.tx_type] || r.tx_type}</td>
+                <td class="py-2.5 px-3 text-xs font-bold text-gray-700">${accText}</td>
+                <td class="py-2.5 px-3 text-xs">${ptsHtml}</td>
+                <td class="py-2.5 px-3 text-xs font-bold text-gray-700">${r.operator || '系統'}</td>
+                <td class="py-2.5 px-3 text-xs text-gray-600">${cleanNote}</td>
+                <td class="py-2.5 px-3 text-right font-extrabold ${amtColor}">${amtFormatted}</td>
+                <td class="py-2.5 px-3 text-center">
+                    <button onclick="deleteRecord(${r.id})" class="text-gray-400 hover:text-rose-600 text-xs font-bold px-2 py-1 rounded">✕</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    // 送出進貨或轉帳表單 (包含寫入 Google Sheet N卡序號倉庫 + Discord 通知牧宣)
+    async function handleTransactionSubmit(e) {
+        e.preventDefault();
+        const btn = document.getElementById('btn-submit-tx');
+        btn.disabled = true;
+        const originalText = btn.textContent;
+        btn.textContent = '⏳ 處理中...';
+
+        const tx_date = document.getElementById('tx-date').value;
+        const tx_type = document.getElementById('tx-type').value;
+        const amount = parseInt(document.getElementById('tx-amount').value) || 0;
+        const operator = document.getElementById('tx-operator').value;
+        const note = document.getElementById('tx-note').value.trim();
+        const shouldNotifyMuxuan = document.getElementById('notify-muxuan-chk').checked;
+
+        const typeLabelMap = {
+            'buy_cards': '🛒 帳戶B 買點卡入庫',
+            'transfer_a_to_b': '🔄 帳戶A 提款轉帳至 帳戶B',
+            'withdraw_a': '📤 帳戶A 提款 / 扣款',
+            'income': '💰 帳戶A 手動入帳',
+            'adjust_b': '🏦 帳戶B 手動入帳',
+            'withdraw_b': '📤 帳戶B 其他扣款'
+        };
+
+        let card_qty = 0;
+        let points_added = 0;
+        let account = 'A';
+
+        if (tx_type === 'buy_cards') {
+            const price = parseInt(document.getElementById('buy-card-price').value) || 2080;
+            card_qty = parseInt(document.getElementById('buy-card-qty').value) || 0;
+            points_added = card_qty * POINTS_PER_CARD;
+            account = 'B';
+
+            // 若有勾選「同步寫入 Google Sheet N卡序號倉庫」，直接執行批量開空位 + Gmail 抓信 + 通知牧宣
+            if (document.getElementById('sync-to-sheet').checked && card_qty > 0) {
+                btn.textContent = '⏳ 正在寫入 Google Sheet N卡倉庫...';
+                try {
+                    const sheetRes = await fetch(WAREHOUSE_GAS_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({
+                            price: Number(price),
+                            quantity: Number(card_qty),
+                            operator: operator,
+                            notifyMuxuan: shouldNotifyMuxuan
+                        })
+                    });
+                    const sheetResult = await sheetRes.json();
+                    if (sheetResult.success) {
+                        showToast(`✅ N卡倉庫寫入成功：${sheetResult.message}`);
+                    } else {
+                        showToast(`⚠️ 倉庫回應：${sheetResult.error || '已完成呼叫'}`);
+                    }
+                } catch (err) {
+                    console.warn('GAS 寫入提醒:', err);
+                }
+            }
+        } else {
+            if (tx_type === 'transfer_a_to_b') account = 'A_to_B';
+            else if (tx_type === 'adjust_b' || tx_type === 'withdraw_b') account = 'B';
+
+            // 若是一般轉帳/提款且勾選通知牧宣，呼叫 GAS 發送 Discord 通知給牧宣
+            if (shouldNotifyMuxuan) {
+                try {
+                    fetch(WAREHOUSE_GAS_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({
+                            type: 'ledger_notify',
+                            ledgerData: {
+                                tx_date,
+                                tx_type_label: typeLabelMap[tx_type] || tx_type,
+                                amount,
+                                operator,
+                                note
+                            }
+                        })
+                    });
+                } catch (err) {
+                    console.warn('通知牧宣失敗:', err);
+                }
+            }
+        }
+
+        const newRecord = { tx_date, tx_type, account, amount, card_qty, points_added, operator, note };
+
+        const { error } = await supabaseClient.from('ledger_records').insert([newRecord]);
+        if (error) {
+            const localBackup = JSON.parse(localStorage.getItem('studio_ledger_fallback') || '[]');
+            newRecord.id = Date.now();
+            localBackup.unshift(newRecord);
+            localStorage.setItem('studio_ledger_fallback', JSON.stringify(localBackup));
+            showToast('⚠️ 已暫存於本機，請執行上方 SQL 啟用雲端同步');
+        } else {
+            showToast('✅ 已寫入雲端並更新資產與倉庫庫存！');
+        }
+
+        btn.disabled = false;
+        btn.textContent = originalText;
+        handleTxTypeChange();
+        fetchAllCloudData();
+        setTimeout(() => fetchWarehouseStats(false), 1500);
+    }
+
+    // 直接修改餘額 / 校正庫存 (支援分批不同單價：未開卡 @ 2085、剩餘點數 @ 2080)
+    function recalcOverrideTotalPts() {
+        const unopened = parseInt(document.getElementById('override-unopened-cards').value) || 0;
+        const unopenedPrice = parseInt(document.getElementById('override-unopened-price').value) || 2085;
+        const activePts = parseInt(document.getElementById('override-active-pts').value) || 0;
+        const activePrice = parseInt(document.getElementById('override-active-price').value) || 2080;
+
+        const totalPts = (unopened * POINTS_PER_CARD) + activePts;
+        const unopenedVal = unopened * unopenedPrice;
+        const activeVal = Math.round(activePts * (activePrice / POINTS_PER_CARD));
+        const val = unopenedVal + activeVal;
+
+        document.getElementById('override-pts').value = totalPts;
+        document.getElementById('override-total-pts-preview').textContent =
+            `${totalPts.toLocaleString()} 點 (估值 $${val.toLocaleString()} = 未開$${unopenedVal.toLocaleString()} + 剩點$${activeVal.toLocaleString()})`;
+    }
+
+    function openOverrideModal() {
+        document.getElementById('override-acc-a').value = currentCalculated.accA;
+        document.getElementById('override-acc-b').value = currentCalculated.accB;
+        document.getElementById('override-unopened-cards').value = currentCalculated.unopenedCards;
+        document.getElementById('override-unopened-price').value = currentCalculated.unopenedUnitCost || 2085;
+        document.getElementById('override-active-pts').value = currentCalculated.activeRemainPts;
+        document.getElementById('override-active-price').value = currentCalculated.activeUnitCost || 2080;
+        recalcOverrideTotalPts();
+        document.getElementById('override-modal').classList.remove('hidden');
+    }
+    function closeOverrideModal() {
+        document.getElementById('override-modal').classList.add('hidden');
+    }
+
+    async function submitOverrideBalances(e) {
+        e.preventDefault();
+        const targetA = parseInt(document.getElementById('override-acc-a').value) || 0;
+        const targetB = parseInt(document.getElementById('override-acc-b').value) || 0;
+        const targetUnopened = parseInt(document.getElementById('override-unopened-cards').value) || 0;
+        const targetUnopenedPrice = parseInt(document.getElementById('override-unopened-price').value) || 2085;
+        const targetActivePts = parseInt(document.getElementById('override-active-pts').value) || 0;
+        const targetActivePrice = parseInt(document.getElementById('override-active-price').value) || 2080;
+
+        const targetPts = (targetUnopened * POINTS_PER_CARD) + targetActivePts;
+        const targetVal = (targetUnopened * targetUnopenedPrice) + Math.round(targetActivePts * (targetActivePrice / POINTS_PER_CARD));
+
+        const diffA = targetA - currentCalculated.accA;
+        const diffB = targetB - currentCalculated.accB;
+        const diffUnopened = targetUnopened - currentCalculated.unopenedCards;
+        const diffPts = targetPts - currentCalculated.remainPts;
+        const diffVal = targetVal - (currentCalculated.invVal || 0);
+
+        const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+        const adjustDate = today >= cutoffDate ? today : cutoffDate;
+        const records = [];
+
+        if (diffA !== 0) {
+            records.push({
+                tx_date: adjustDate,
+                tx_type: diffA > 0 ? 'income' : 'withdraw_a',
+                account: 'A',
+                amount: Math.abs(diffA),
+                card_qty: 0,
+                points_added: 0,
+                operator: '盤點校正',
+                note: `🎯 手動設定帳戶A餘額為 $${targetA.toLocaleString()}`
+            });
+        }
+        if (diffB !== 0) {
+            records.push({
+                tx_date: adjustDate,
+                tx_type: diffB > 0 ? 'adjust_b' : 'withdraw_b',
+                account: 'B',
+                amount: Math.abs(diffB),
+                card_qty: 0,
+                points_added: 0,
+                operator: '盤點校正',
+                note: `🎯 手動設定帳戶B餘額為 $${targetB.toLocaleString()}`
+            });
+        }
+        if (diffPts !== 0 || diffUnopened !== 0 || targetUnopenedPrice !== currentCalculated.unopenedUnitCost || targetActivePrice !== currentCalculated.activeUnitCost) {
+            records.push({
+                tx_date: adjustDate,
+                tx_type: 'withdraw_b',
+                account: 'B',
+                amount: 0,
+                card_qty: diffUnopened,
+                points_added: diffPts,
+                operator: '盤點校正',
+                note: `🎯 盤點設定：未開卡 ${targetUnopened}張(@$${targetUnopenedPrice}) + 剩餘 ${targetActivePts.toLocaleString()}點(@$${targetActivePrice}) [BATCH:${targetActivePts}@${targetActivePrice},${targetUnopened}@${targetUnopenedPrice}][CONSUMED:${completedOrdersStats.totalConsumedPoints}]`
+            });
+        }
+
+        if (records.length > 0) {
+            const { error } = await supabaseClient.from('ledger_records').insert(records);
+            if (error) {
+                const localBackup = JSON.parse(localStorage.getItem('studio_ledger_fallback') || '[]');
+                records.forEach((r, idx) => { r.id = Date.now() + idx; localBackup.unshift(r); });
+                localStorage.setItem('studio_ledger_fallback', JSON.stringify(localBackup));
+            }
+        }
+        closeOverrideModal();
+        await fetchAllCloudData();
+        showToast('✅ 已更新分批成本估值與庫存點數！');
+    }
+
+    async function resetAllToZero() {
+        document.getElementById('override-acc-a').value = 0;
+        document.getElementById('override-acc-b').value = 0;
+        document.getElementById('override-unopened-cards').value = 0;
+        document.getElementById('override-active-pts').value = 0;
+        recalcOverrideTotalPts();
+        await submitOverrideBalances(new Event('submit'));
+    }
+
+    async function deleteRecord(id) {
+        await supabaseClient.from('ledger_records').delete().eq('id', id);
+        const localBackup = JSON.parse(localStorage.getItem('studio_ledger_fallback') || '[]').filter(r => r.id !== id);
+        localStorage.setItem('studio_ledger_fallback', JSON.stringify(localBackup));
+        fetchAllCloudData();
+        showToast('🗑️ 已刪除該筆紀錄');
+    }
+
+    function openGasModal() { document.getElementById('gas-modal').classList.remove('hidden'); }
+    function closeGasModal() { document.getElementById('gas-modal').classList.add('hidden'); }
+    function copyGasCode() {
+        const code = document.getElementById('gas-code-block').innerText;
+        navigator.clipboard.writeText(code);
+        showToast('✅ 已複製 doGet 程式碼！');
+    }
+
+    function openSqlModal() { document.getElementById('sql-modal').classList.remove('hidden'); }
+    function closeSqlModal() { document.getElementById('sql-modal').classList.add('hidden'); }
+    function copySqlCode() {
+        const code = document.getElementById('sql-code-block').innerText;
+        navigator.clipboard.writeText(code);
+        showToast('✅ 已複製 SQL 指令！');
+    }
+
+    function showToast(msg) {
+        const t = document.getElementById('toast');
+        document.getElementById('toast-msg').textContent = msg;
+        t.classList.remove('hidden');
+        setTimeout(() => t.classList.add('hidden'), 3000);
+    }
+</script>
+</body>
+</html>
