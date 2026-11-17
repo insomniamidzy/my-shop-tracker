@@ -525,10 +525,20 @@ create policy "Allow public access to ledger_records"
     async function fetchAllCloudData() {
         try {
             // 1. 讀取訂單：已派發(delivered)先扣點、已完成(completed)才入 A 帳 (點數只扣一次不重複)
-            const { data: ordersData, error: ordersErr } = await supabaseClient
-                .from('orders')
-                .select('id, status, final_amount, cost, item_name, extra_gifts, completed_at, created_at')
-                .in('status', ['delivered', 'completed']);
+            //    ✨ Supabase 預設單次查詢上限 1000 筆，訂單已超過 1700 筆，必須分頁抓完
+            let ordersData = [], ordersErr = null;
+            const ORDER_PAGE = 1000;
+            for (let from = 0; ; from += ORDER_PAGE) {
+                const { data: pageData, error: pageErr } = await supabaseClient
+                    .from('orders')
+                    .select('id, status, final_amount, cost, item_name, extra_gifts, completed_at, created_at')
+                    .in('status', ['delivered', 'completed'])
+                    .order('created_at', { ascending: false })
+                    .range(from, from + ORDER_PAGE - 1);
+                if (pageErr) { ordersErr = pageErr; break; }
+                if (pageData) ordersData = ordersData.concat(pageData);
+                if (!pageData || pageData.length < ORDER_PAGE) break;
+            }
 
             if (!ordersErr && ordersData) {
                 let cCount = 0, cRev = 0, cPts = 0, cCost = 0, dCount = 0;
