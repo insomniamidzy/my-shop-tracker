@@ -418,6 +418,8 @@ create policy "Allow public access to ledger_records"
     let cloudLedgerRecords = [];
     let completedOrdersStats = { count: 0, totalRevenue: 0, totalConsumedPoints: 0, totalOrderCost: 0, deliveredCount: 0 };
     let ordersStatsLoaded = false; // 訂單統計是否已成功載入 (未載入前禁止盤點，避免把 [CONSUMED:0] 寫進 FIFO 基準)
+    let orderDetailList = [];      // 每筆訂單明細 (供流水帳彙整列點開查看)
+    let orderDetailsOpen = false;  // 明細展開狀態
     let warehouseStats = {
         connected: false,
         unopenedSelfCards: 0,
@@ -532,7 +534,7 @@ create policy "Allow public access to ledger_records"
             for (let from = 0; ; from += ORDER_PAGE) {
                 const { data: pageData, error: pageErr } = await supabaseClient
                     .from('orders')
-                    .select('id, status, final_amount, cost, item_name, extra_gifts, completed_at, created_at')
+                    .select('id, status, final_amount, cost, item_name, extra_gifts, completed_at, created_at, order_no, nickname')
                     .in('status', ['delivered', 'completed'])
                     .order('created_at', { ascending: false })
                     .range(from, from + ORDER_PAGE - 1);
@@ -543,6 +545,7 @@ create policy "Allow public access to ledger_records"
 
             if (!ordersErr && ordersData) {
                 let cCount = 0, cRev = 0, cPts = 0, cCost = 0, dCount = 0;
+                orderDetailList = [];
                 ordersData.forEach(order => {
                     const dateStr = order.completed_at || order.created_at;
                     let includeOrder = true;
@@ -561,6 +564,15 @@ create policy "Allow public access to ledger_records"
                         } else {
                             dCount++; // 已派發：點數已扣，但錢還沒入 A 帳
                         }
+                        orderDetailList.push({
+                            orderNo: order.order_no || ('#' + order.id),
+                            nickname: order.nickname || '-',
+                            itemName: order.item_name || '-',
+                            pts: orderPts,
+                            amount: parseInt(order.final_amount) || 0,
+                            completed: order.status === 'completed',
+                            date: new Date(dateStr).toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' })
+                        });
                     }
                 });
                 completedOrdersStats = { count: cCount, totalRevenue: cRev, totalConsumedPoints: cPts, totalOrderCost: cCost, deliveredCount: dCount };
@@ -803,17 +815,26 @@ create policy "Allow public access to ledger_records"
         renderTable();
     }
 
+    // 點開/收合訂單明細
+    function toggleOrderDetails() {
+        orderDetailsOpen = !orderDetailsOpen;
+        renderTable();
+    }
+
     function renderTable() {
         const tbody = document.getElementById('tx-table-body');
         tbody.innerHTML = '';
 
-        // 第一列固定顯示已完成訂單彙整
+        // 第一列固定顯示已完成訂單彙整 (可點開查看每一筆明細)
         if (includeAutoOrderRevenue) {
+            const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
             const autoTr = document.createElement('tr');
-            autoTr.className = 'bg-emerald-50/60 font-semibold';
+            autoTr.className = 'bg-emerald-50/60 font-semibold cursor-pointer hover:bg-emerald-100';
+            autoTr.title = '點此展開/收合每一筆訂單明細';
+            autoTr.onclick = toggleOrderDetails;
             autoTr.innerHTML = `
                 <td class="py-2.5 px-3 text-xs text-emerald-800">${cutoffDate.slice(5)} 起</td>
-                <td class="py-2.5 px-3"><span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded text-xs font-bold">📊 已完成 ${completedOrdersStats.count} 筆 + 已派發 ${completedOrdersStats.deliveredCount || 0} 筆</span></td>
+                <td class="py-2.5 px-3"><span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded text-xs font-bold">📊 已完成 ${completedOrdersStats.count} 筆 + 已派發 ${completedOrdersStats.deliveredCount || 0} 筆 <span class="text-emerald-500">${orderDetailsOpen ? '▾' : '▸'}</span></span></td>
                 <td class="py-2.5 px-3 text-xs text-emerald-700 font-bold">帳戶 A 入帳</td>
                 <td class="py-2.5 px-3 text-xs text-rose-600 font-bold">-${completedOrdersStats.totalConsumedPoints.toLocaleString()} 點</td>
                 <td class="py-2.5 px-3 text-xs text-gray-500">系統自動</td>
@@ -822,6 +843,40 @@ create policy "Allow public access to ledger_records"
                 <td class="py-2.5 px-3 text-center text-xs text-gray-400">自動</td>
             `;
             tbody.appendChild(autoTr);
+
+            // 展開的明細列：每筆訂單一列 (日期/編號/暱稱/品項/狀態/點數/金額)
+            const detailTr = document.createElement('tr');
+            if (!orderDetailsOpen) detailTr.classList.add('hidden');
+            const detailRows = orderDetailList.map(o => `
+                <tr class="border-t border-emerald-100">
+                    <td class="py-1.5 px-2 text-xs text-gray-500">${o.date.slice(5)}</td>
+                    <td class="py-1.5 px-2 text-xs text-gray-700 font-mono">${esc(o.orderNo)}</td>
+                    <td class="py-1.5 px-2 text-xs text-gray-700">${esc(o.nickname)}</td>
+                    <td class="py-1.5 px-2 text-xs text-gray-700">${esc(o.itemName)}</td>
+                    <td class="py-1.5 px-2 text-xs">${o.completed ? '<span class="text-emerald-600 font-bold">✅ 已完成</span>' : '<span class="text-amber-600 font-bold">🚚 已派發</span>'}</td>
+                    <td class="py-1.5 px-2 text-xs text-rose-500 text-right">-${o.pts.toLocaleString()} 點</td>
+                    <td class="py-1.5 px-2 text-xs text-right font-bold ${o.completed ? 'text-emerald-700' : 'text-gray-400'}">${o.completed ? '+$' + o.amount.toLocaleString() : '未入帳'}</td>
+                </tr>`).join('');
+            detailTr.innerHTML = `
+                <td colspan="8" class="py-0 px-0 bg-white">
+                    <div class="border border-emerald-100 rounded-lg mx-3 my-2 max-h-72 overflow-y-auto shadow-sm">
+                        <table class="w-full text-left">
+                            <thead class="bg-emerald-50 sticky top-0">
+                                <tr>
+                                    <th class="py-1.5 px-2 text-xs text-gray-500">日期</th>
+                                    <th class="py-1.5 px-2 text-xs text-gray-500">訂單編號</th>
+                                    <th class="py-1.5 px-2 text-xs text-gray-500">暱稱</th>
+                                    <th class="py-1.5 px-2 text-xs text-gray-500">品項</th>
+                                    <th class="py-1.5 px-2 text-xs text-gray-500">狀態</th>
+                                    <th class="py-1.5 px-2 text-xs text-gray-500 text-right">消耗點數</th>
+                                    <th class="py-1.5 px-2 text-xs text-gray-500 text-right">金額</th>
+                                </tr>
+                            </thead>
+                            <tbody>${detailRows || '<tr><td colspan="7" class="py-3 text-center text-xs text-gray-400">此區間尚無訂單</td></tr>'}</tbody>
+                        </table>
+                    </div>
+                </td>`;
+            tbody.appendChild(detailTr);
         }
 
         const typeBadge = {
