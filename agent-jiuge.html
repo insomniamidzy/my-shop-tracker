@@ -168,6 +168,39 @@
             }
         }
 
+        // ✨ FIFO 真實買進單價（$ / 點）：從 ledger_records 重放買卡批次（FIFO），
+        //    庫存轉出從尾端移除，取最前端批次的金額/點數當單價；與 ledger.html 估值同源
+        let fifoUnitCost = 0;
+        async function fetchFifoUnitCost() {
+            try {
+                const { data, error } = await supabaseClient
+                    .from('ledger_records')
+                    .select('tx_type, amount, points_added, tx_date, id')
+                    .in('tx_type', ['buy_cards', 'stock_out'])
+                    .order('tx_date', { ascending: true })
+                    .order('id', { ascending: true });
+                if (error || !data) return;
+                const batches = [];
+                data.forEach(r => {
+                    const pts = parseInt(r.points_added) || 0;
+                    if (r.tx_type === 'buy_cards' && pts > 0) {
+                        batches.push({ pts, orig: pts, amt: parseInt(r.amount) || 0 });
+                    } else if (r.tx_type === 'stock_out' && pts < 0) {
+                        let rem = -pts;
+                        for (let i = batches.length - 1; i >= 0 && rem > 0; i--) {
+                            if (batches[i].pts > 0) {
+                                const take = Math.min(batches[i].pts, rem);
+                                batches[i].pts -= take;
+                                rem -= take;
+                            }
+                        }
+                    }
+                });
+                const head = batches.find(b => b.pts > 0);
+                if (head && head.pts > 0) fifoUnitCost = head.amt / head.orig; // 單價用原批點數算（剩餘點數被轉出吃掉後不能拿來當分母）
+            } catch (e) { console.warn('FIFO 單價抓取失敗', e); }
+        }
+
         const date = new Date();
         const currentMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
         document.getElementById('month-selector').value = currentMonth;
@@ -214,7 +247,12 @@
             } else {
                 data.forEach(order => {
                     const rev = order.final_amount || 0;
-                    const cost = calculateTwdCost(order.item_name, order.game_id);
+                    // ✨ 新計算法（同 ledger.html）：優先用 DB 真實成本（GAS 整數滾動餘數法逐卡計算），
+                    //    舊單沒有成本紀錄時，改用 FIFO 佇列真實買進單價估算，不再用固定匯率硬算
+                    const orderPts = calculateOrderPoints(order.item_name, order.extra_gifts);
+                    const dbCost = parseInt(order.cost) || 0;
+                    const cost = (dbCost > 0) ? dbCost : (orderPts > 0 && fifoUnitCost > 0 ? Math.round(orderPts * fifoUnitCost) : 0);
+                    const isEstimate = dbCost <= 0 && cost > 0;
                     const profit = cost > 0 ? (rev - cost) : 0; 
 
                     if (order.status !== 'cancelled') {
@@ -226,7 +264,7 @@
                     if (cost > 0) {
                         const profitClass = profit > 0 ? 'profit-positive' : 'profit-negative';
                         const sign = profit > 0 ? '+' : '';
-                        profitHtml = `<div class="profit-box"><span class="text-cost">成本: $${cost}</span><span class="${profitClass}">${sign}$${profit}</span></div>`;
+                        profitHtml = `<div class="profit-box"><span class="text-cost">成本: $${cost}${isEstimate ? ' (估)' : ''}</span><span class="${profitClass}">${sign}$${profit}</span></div>`;
                     }
 
                     let operatorBadge = '<span class="status-badge" style="background: #673ab7; color: white;">💼 九歌</span>';
@@ -280,7 +318,12 @@
                         <td><span class="status-badge status-info">${order.payment_method || '---'}</span></td>
                         <td>${statusDropdownHtml}</td> 
                         <td>${completedAtHtml}</td>
-                        <td><button class="btn-copy" onclick="copyOrderInfo(${order.id}, this, '${displayGameName}')">📋 複製明細</button></td>
+                        <td>
+                            <div style="display:flex; flex-direction:column; gap:4px;">
+                                ${order.order_no ? `<a href="https://script.google.com/macros/s/AKfycbyBkdHaOLKtetFtUBctyx2cNaGFFPoh93SzhrvkghYshwi5gNs1PFe6YWUVL9Muk4_kbQ/exec?orderNo=${order.order_no}" target="_blank" rel="noopener noreferrer" class="btn-copy" style="text-align:center; text-decoration:none;">📸 上傳截圖</a>` : ''}
+                                <button class="btn-copy" onclick="copyOrderInfo(${order.id}, this, '${displayGameName}')">📋 複製明細</button>
+                            </div>
+                        </td>
                     `;
                     tbody.appendChild(tr);
                 });
@@ -387,6 +430,8 @@
             loadJiugeOrders(); 
         }
 
+        const GAS_URL = 'https://script.google.com/macros/s/AKfycbzpo2NDhA91p09X_oRQeYJHzC6oZde--QIirxEXVmNC69uBfrr1WE8B0Y0iUhq3KHUt/exec';
+
         async function updateOrderStatus(selectElement) {
             const orderId = selectElement.getAttribute('data-id');
             const newStatus = selectElement.value;
@@ -398,13 +443,84 @@
             else updatePayload.completed_at = null;
 
             const { error } = await supabaseClient.from('orders').update(updatePayload).eq('id', orderId);
-            if (error) alert('狀態更新失敗：' + error.message); 
+            if (error) {
+                alert('狀態更新失敗：' + error.message);
+            } else {
+                // ✨ 與前台 index.html 同步：改狀態時觸發扣點/退點，避免業務端切「已完成」造成漏扣
+                // 先抓 DB 最新 cost（頁面資料可能過期，防重複扣款攔截失效）
+                const { data: fresh } = await supabaseClient.from('orders').select('cost, used_cards, item_name, extra_gifts').eq('id', orderId).single();
+                const currentCost = parseInt(fresh && fresh.cost) || 0;
+                const requiredPts = calculateOrderPoints(fresh && fresh.item_name, fresh && fresh.extra_gifts);
+
+                if (newStatus === 'completed') {
+                    if (currentCost > 0) {
+                        console.log('🔒 此單已扣過點數與成本，跳過重複扣款。');
+                    } else if (requiredPts > 0) {
+                        fetch(GAS_URL, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            body: JSON.stringify({ type: 'deduct_points', orderId: orderId, requiredPoints: requiredPts })
+                        }).catch(e => console.log('扣點請求失敗', e));
+                    }
+                }
+                else if (newStatus === 'cancelled' || newStatus === 'pending') {
+                    if (currentCost > 0 && fresh && fresh.used_cards) {
+                        console.log('⏪ 啟動精準退點程序...');
+                        fetch(GAS_URL, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            body: JSON.stringify({ type: 'refund_points', orderId: orderId, usedCards: fresh.used_cards })
+                        }).catch(e => console.log('退點請求失敗', e));
+                    }
+                }
+            }
             loadJiugeOrders(); 
+        }
+
+        // ✨ 與 index.html 相同的點數試算（訂單應扣點數）
+        function calculateOrderPoints(itemName, extraGifts) {
+            let pts = 0;
+            const giftQty = parseInt(extraGifts) || 0;
+            if (giftQty > 0) pts += giftQty * 120;
+            if (!itemName) return pts;
+
+            const items = itemName.split('+').map(i => i.trim());
+            const eventMap = {
+                "八週年特惠禮包 (956回聲+5精華)": 1220,
+                "八週年優惠禮包1 (1009回聲+3精華)": 1840,
+                "八週年優惠禮包2 (3448回聲+7精華)": 6100,
+                "八週年優惠禮包3 (6918回聲+15精華)": 12000,
+                "八週年禮包大全套 (四款全包)": 21160
+            };
+
+            items.forEach(item => {
+                const qtyMatch = item.match(/[xX*]\s*(\d+)/);
+                const qty = qtyMatch ? parseInt(qtyMatch[1]) : 1;
+                const baseItem = item.replace(/\s*[xX*]\s*\d+$/, '').trim();
+
+                if (eventMap[baseItem]) {
+                    pts += eventMap[baseItem] * qty;
+                } else {
+                    const echoMatch = baseItem.match(/(\d+)\s*回聲/);
+                    if (echoMatch) {
+                        const echoAmount = parseInt(echoMatch[1]);
+                        if (echoAmount % 759 === 0) {
+                            const units = echoAmount / 759;
+                            pts += (units * 1220) * qty;
+                        }
+                        else if (echoAmount === 203) pts += 370 * qty;
+                        else if (echoAmount === 60) pts += 120 * qty;
+                    }
+                }
+            });
+
+            return pts;
         }
 
         // ✨ 網頁載入時，確保先抓完資料庫價格，再載入訂單列表
         document.addEventListener('DOMContentLoaded', async () => {
             await fetchLivePrices();
+            await fetchFifoUnitCost();
             loadJiugeOrders();
         });
     </script>
