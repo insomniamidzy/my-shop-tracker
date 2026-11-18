@@ -315,8 +315,8 @@
                 });
             }
             document.getElementById('total-revenue').innerText = `$${totalRev.toLocaleString()}`;
-            // ✨ 計算 Mo Lin 專屬的 3.5 成獎金 (四捨五入)
-            const molinBonus = Math.round(totalProf * 0.35);
+            // ✨ 計算 Mo Lin 專屬的 4 成獎金 (四捨五入)
+            const molinBonus = Math.round(totalProf * 0.4);
             document.getElementById('total-profit').innerText = `$${molinBonus.toLocaleString()}`;
         }
 
