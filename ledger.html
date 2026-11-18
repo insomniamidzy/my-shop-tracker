@@ -640,8 +640,8 @@ create policy "Allow public access to ledger_records"
         }
     }
 
-    // ✨ 倉庫自動監測：G欄被標成「代抽/下游廠商」的卡 → 自動補記庫存轉出（金額=該卡買價，回沖 B 帳）
-    //    以備註 [CARD:卡號] 比對已記錄過的卡，絕不重複記錄
+    // ✨ 倉庫自動監測：G欄被標成「代抽/下游廠商」的卡 → 自動補記庫存轉出（非現金，只扣庫存估值）
+    //    以備註 [CARD:卡號] 比對已記錄過的卡（一張都不重複），同用途+同單價的卡收斂成一筆
     let autoSyncStockOutsInFlight = false;
     async function autoSyncStockOuts() {
         if (autoSyncStockOutsInFlight) return;
@@ -651,28 +651,38 @@ create policy "Allow public access to ledger_records"
         autoSyncStockOutsInFlight = true;
         try {
             const already = new Set();
+            const cardTagRe = /\[CARD:([^\]]+)\]/g;
             cloudLedgerRecords.forEach(r => {
                 if (r.tx_type === 'stock_out') {
-                    const m = String(r.note || '').match(/\[CARD:([^\]]+)\]/);
-                    if (m) already.add(m[1]);
+                    let m;
+                    while ((m = cardTagRe.exec(String(r.note || ''))) !== null) already.add(m[1]);
                 }
             });
             const pending = warehouseStats.stockoutCards.filter(c => c.cardId && !already.has(String(c.cardId)));
             if (pending.length === 0) return;
             const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
-            const rows = pending.map(c => ({
+            // 依「用途+單價」分組收斂，一批只寫一筆，卡號全列在備註 [CARD:xx] 供日後比對
+            const groupMap = {};
+            pending.forEach(c => {
+                const price = Math.round(c.price) || 0;
+                const key = `${c.usage}|${price}`;
+                if (!groupMap[key]) groupMap[key] = { usage: c.usage, price: price, cards: [], pts: 0 };
+                groupMap[key].cards.push(c.cardId);
+                groupMap[key].pts += (parseInt(c.pts) || POINTS_PER_CARD);
+            });
+            const rows = Object.values(groupMap).map(g => ({
                 tx_date: today,
                 tx_type: 'stock_out',
                 account: 'B',
-                amount: Math.round(c.price) || 0,
-                card_qty: 1,
-                points_added: -(parseInt(c.pts) || POINTS_PER_CARD),
+                amount: g.price * g.cards.length,
+                card_qty: g.cards.length,
+                points_added: -g.pts,
                 operator: '自動同步',
-                note: `偵測到 ${c.cardId} 號卡 G欄已標「${c.usage}」，自動記錄庫存轉出 [CARD:${c.cardId}]`
+                note: `偵測到 ${g.cards.length} 張卡轉「${g.usage}」(@$${g.price}/張)，自動記錄庫存轉出 ${g.cards.map(id => `[CARD:${id}]`).join(' ')}`
             }));
             const { error } = await supabaseClient.from('ledger_records').insert(rows);
             if (error) throw error;
-            showToast(`📦 倉庫掃描：新偵測到 ${rows.length} 張「代抽/下游」卡，已自動記錄庫存轉出並回沖 B 帳`);
+            showToast(`📦 倉庫掃描：新偵測到 ${pending.length} 張「代抽/下游」卡，已收斂成 ${rows.length} 筆庫存轉出`);
             await fetchAllCloudData(); // 重新載入，讓總資產與庫存即時反映
         } catch (err) {
             console.warn('自動庫存轉出失敗:', err);
@@ -938,6 +948,14 @@ create policy "Allow public access to ledger_records"
         renderTable();
     }
 
+    // 📚 已收斂群組的展開狀態 (key: tx_type|tx_date，僅顯示層，不動資料庫)
+    const expandedTxGroups = new Set();
+    function toggleTxGroup(key) {
+        if (expandedTxGroups.has(key)) expandedTxGroups.delete(key);
+        else expandedTxGroups.add(key);
+        renderTable();
+    }
+
     function renderTable() {
         const tbody = document.getElementById('tx-table-body');
         tbody.innerHTML = '';
@@ -1006,37 +1024,42 @@ create policy "Allow public access to ledger_records"
             'stock_out': '<span class="px-2 py-0.5 bg-orange-100 text-orange-800 rounded text-xs font-bold">📦 庫存轉出 (代抽/下游)</span>'
         };
 
-        cloudLedgerRecords.forEach(r => {
-            const tr = document.createElement('tr');
-            tr.className = 'hover:bg-gray-50';
-            const amt = parseInt(r.amount) || 0;
-            const pts = parseInt(r.points_added) || 0;
-
+        // 帳戶/金額欄位顯示規則 (依類型)
+        function txAmountView(tx_type, amt) {
             let accText = '帳戶 A';
             let amtFormatted = `+$${amt.toLocaleString()}`;
             let amtColor = 'text-emerald-600';
 
-            if (r.tx_type === 'transfer_a_to_b') {
+            if (tx_type === 'transfer_a_to_b') {
                 accText = '帳戶 A ➔ B';
                 amtFormatted = `$${amt.toLocaleString()}`;
                 amtColor = 'text-blue-600';
-            } else if (r.tx_type === 'buy_cards' || r.tx_type === 'withdraw_b') {
+            } else if (tx_type === 'buy_cards' || tx_type === 'withdraw_b') {
                 accText = '帳戶 B 扣款';
                 amtFormatted = `-$${amt.toLocaleString()}`;
                 amtColor = 'text-rose-600';
-            } else if (r.tx_type === 'withdraw_a') {
+            } else if (tx_type === 'withdraw_a') {
                 accText = '帳戶 A 扣款';
                 amtFormatted = `-$${amt.toLocaleString()}`;
                 amtColor = 'text-rose-600';
-            } else if (r.tx_type === 'adjust_b') {
+            } else if (tx_type === 'adjust_b') {
                 accText = '帳戶 B 入帳';
                 amtFormatted = `+$${amt.toLocaleString()}`;
                 amtColor = 'text-amber-600';
-            } else if (r.tx_type === 'stock_out') {
+            } else if (tx_type === 'stock_out') {
                 accText = '庫存轉出 (非現金)';
                 amtFormatted = `$${amt.toLocaleString()}`;
                 amtColor = 'text-orange-600';
             }
+            return { accText, amtFormatted, amtColor };
+        }
+
+        function makeTxRow(r) {
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-gray-50';
+            const amt = parseInt(r.amount) || 0;
+            const pts = parseInt(r.points_added) || 0;
+            const view = txAmountView(r.tx_type, amt);
 
             let ptsHtml = '<span class="text-gray-300">-</span>';
             if (pts !== 0) {
@@ -1048,16 +1071,63 @@ create policy "Allow public access to ledger_records"
             tr.innerHTML = `
                 <td class="py-2.5 px-3 text-xs text-gray-600 font-mono">${r.tx_date}</td>
                 <td class="py-2.5 px-3">${typeBadge[r.tx_type] || r.tx_type}</td>
-                <td class="py-2.5 px-3 text-xs font-bold text-gray-700">${accText}</td>
+                <td class="py-2.5 px-3 text-xs font-bold text-gray-700">${view.accText}</td>
                 <td class="py-2.5 px-3 text-xs">${ptsHtml}</td>
                 <td class="py-2.5 px-3 text-xs font-bold text-gray-700">${r.operator || '系統'}</td>
                 <td class="py-2.5 px-3 text-xs text-gray-600">${cleanNote}</td>
-                <td class="py-2.5 px-3 text-right font-extrabold ${amtColor}">${amtFormatted}</td>
+                <td class="py-2.5 px-3 text-right font-extrabold ${view.amtColor}">${view.amtFormatted}</td>
                 <td class="py-2.5 px-3 text-center">
                     <button onclick="deleteRecord(${r.id})" class="text-gray-400 hover:text-rose-600 text-xs font-bold px-2 py-1 rounded">✕</button>
                 </td>
             `;
-            tbody.appendChild(tr);
+            return tr;
+        }
+
+        // 📚 按時間順序走訪：相鄰同類型+同一天的紀錄收斂成一行摘要，點該列可展開/收合
+        let currentGroup = null;
+        const rowGroups = [];
+        cloudLedgerRecords.forEach(r => {
+            const key = `${r.tx_type}|${r.tx_date}`;
+            if (currentGroup && currentGroup.key === key) currentGroup.records.push(r);
+            else { currentGroup = { key, records: [r] }; rowGroups.push(currentGroup); }
+        });
+
+        rowGroups.forEach(g => {
+            if (g.records.length === 1) {
+                tbody.appendChild(makeTxRow(g.records[0]));
+                return;
+            }
+            const first = g.records[0];
+            const sumAmt = g.records.reduce((s, r) => s + (parseInt(r.amount) || 0), 0);
+            const sumPts = g.records.reduce((s, r) => s + (parseInt(r.points_added) || 0), 0);
+            const sumQty = g.records.reduce((s, r) => s + (parseInt(r.card_qty) || 0), 0);
+            const view = txAmountView(first.tx_type, sumAmt);
+            const isOpen = expandedTxGroups.has(g.key);
+
+            let ptsHtml = '<span class="text-gray-300">-</span>';
+            if (sumPts !== 0) {
+                ptsHtml = `<span class="font-bold ${sumPts > 0 ? 'text-purple-700' : 'text-rose-600'}">${sumPts > 0 ? '+' : ''}${sumPts.toLocaleString()} 點 (${sumQty}張)</span>`;
+            }
+
+            const cleanNote = (first.note || '').replace(/\s*\[(VAL|BATCH|CONSUMED|CARD):[^\]]+\]/g, '');
+
+            const gtr = document.createElement('tr');
+            gtr.className = 'bg-gray-50/70 cursor-pointer hover:bg-gray-100';
+            gtr.title = '點此展開/收合這批同類型紀錄';
+            gtr.onclick = () => toggleTxGroup(g.key);
+            gtr.innerHTML = `
+                <td class="py-2.5 px-3 text-xs text-gray-600 font-mono">${first.tx_date}</td>
+                <td class="py-2.5 px-3">${typeBadge[first.tx_type] || first.tx_type}</td>
+                <td class="py-2.5 px-3 text-xs font-bold text-gray-700">${view.accText}</td>
+                <td class="py-2.5 px-3 text-xs">${ptsHtml}</td>
+                <td class="py-2.5 px-3 text-xs font-bold text-gray-700">${first.operator || '系統'}</td>
+                <td class="py-2.5 px-3 text-xs text-gray-600">${cleanNote} <span class="font-bold text-gray-500">…等 ${g.records.length} 筆</span> <span class="text-gray-400">${isOpen ? '▾' : '▸'}</span></td>
+                <td class="py-2.5 px-3 text-right font-extrabold ${view.amtColor}">${view.amtFormatted}</td>
+                <td class="py-2.5 px-3 text-center text-xs text-gray-400">展開可刪</td>
+            `;
+            tbody.appendChild(gtr);
+
+            if (isOpen) g.records.forEach(r => tbody.appendChild(makeTxRow(r)));
         });
     }
 
