@@ -199,6 +199,7 @@
                     <option value="income">💰 帳戶A 手動入帳</option>
                     <option value="adjust_b">🏦 帳戶B 手動入帳</option>
                     <option value="withdraw_b">📤 帳戶B 其他扣款</option>
+                    <option value="stock_out">📦 庫存轉出 (代抽/下游用卡)</option>
                 </select>
             </div>
 
@@ -423,6 +424,7 @@ create policy "Allow public access to ledger_records"
     let cloudLedgerRecords = [];
     let completedOrdersStats = { count: 0, totalRevenue: 0, totalConsumedPoints: 0, totalOrderCost: 0, deliveredCount: 0 };
     let ordersStatsLoaded = false; // 訂單統計是否已成功載入 (未載入前禁止盤點，避免把 [CONSUMED:0] 寫進 FIFO 基準)
+    let ledgerRecordsLoaded = false; // 金流紀錄是否已載入 (未載入前禁止自動轉出掃描，避免重複記錄)
     let orderDetailList = [];      // 每筆訂單明細 (供流水帳彙整列點開查看)
     let orderDetailsOpen = false;  // 明細展開狀態
     let warehouseStats = {
@@ -482,12 +484,17 @@ create policy "Allow public access to ledger_records"
         const syncLabel = document.getElementById('sync-sheet-label');
         const btnSubmit = document.getElementById('btn-submit-tx');
 
-        if (type === 'buy_cards') {
+        if (type === 'buy_cards' || type === 'stock_out') {
             priceBox.classList.remove('hidden');
             qtyBox.classList.remove('hidden');
             ptsBox.classList.remove('hidden');
-            syncLabel.classList.remove('hidden');
-            btnSubmit.textContent = '🚀 確認進貨 (扣B帳 + 寫入N卡倉庫)';
+            if (type === 'buy_cards') {
+                syncLabel.classList.remove('hidden');
+                btnSubmit.textContent = '🚀 確認進貨 (扣B帳 + 寫入N卡倉庫)';
+            } else {
+                syncLabel.classList.add('hidden');
+                btnSubmit.textContent = '📦 確認庫存轉出 (不影響帳戶餘額)';
+            }
             recalcCardPurchase();
         } else {
             priceBox.classList.add('hidden');
@@ -505,7 +512,10 @@ create policy "Allow public access to ledger_records"
         const qty = parseInt(document.getElementById('buy-card-qty').value) || 0;
         const ptsPerCard = parseInt(document.getElementById('buy-card-pts').value) || POINTS_PER_CARD;
         document.getElementById('tx-amount').value = price * qty;
-        document.getElementById('tx-note').value = `老闆進貨 ${qty} 張 N卡 ($${price}/張・每張 ${ptsPerCard.toLocaleString()} 點，共 ${(qty * ptsPerCard).toLocaleString()} 點)`;
+        const isStockOut = document.getElementById('tx-type').value === 'stock_out';
+        document.getElementById('tx-note').value = isStockOut
+            ? `代抽/下游轉出 ${qty} 張 N卡 ($${price}/張・每張 ${ptsPerCard.toLocaleString()} 點)`
+            : `老闆進貨 ${qty} 張 N卡 ($${price}/張・每張 ${ptsPerCard.toLocaleString()} 點，共 ${(qty * ptsPerCard).toLocaleString()} 點)`;
     }
 
     // 讀取進貨表單的每張點數 (未填或亂填一律回到預設 10200)
@@ -524,10 +534,12 @@ create policy "Allow public access to ledger_records"
                     unopenedSelfCards: Number(data.unopenedSelfCards) || 0,
                     unopenedCostTotal: Number(data.unopenedCostTotal) || 0,
                     openedSelfCards: Number(data.openedSelfCards) || 0,
-                    openedCostTotal: Number(data.openedCostTotal) || 0
+                    openedCostTotal: Number(data.openedCostTotal) || 0,
+                    stockoutCards: data.stockoutCards || [] // ✨ G欄已標代抽/下游的卡 (舊版 GAS 沒這欄 = 空陣列)
                 };
                 if (showNotification) showToast('✅ 已同步 N卡倉庫最新「未開卡」與「已開自用卡」張數！');
                 renderAll();
+                autoSyncStockOuts(); // ✨ 掃描倉庫：新標記的代抽/下游卡自動記庫存轉出
                 return;
             }
         } catch (err) {
@@ -620,9 +632,52 @@ create policy "Allow public access to ledger_records"
 
             const nowStr = new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
             document.getElementById('sync-status-text').textContent = `最後同步：${nowStr}`;
+            ledgerRecordsLoaded = true;
             renderAll();
+            autoSyncStockOuts(); // ✨ 金流紀錄載入後再掃一次，避免倉庫先回來、紀錄還沒到的空窗
         } catch (err) {
             console.error(err);
+        }
+    }
+
+    // ✨ 倉庫自動監測：G欄被標成「代抽/下游廠商」的卡 → 自動補記庫存轉出（金額=該卡買價，回沖 B 帳）
+    //    以備註 [CARD:卡號] 比對已記錄過的卡，絕不重複記錄
+    let autoSyncStockOutsInFlight = false;
+    async function autoSyncStockOuts() {
+        if (autoSyncStockOutsInFlight) return;
+        if (!ledgerRecordsLoaded) return; // 紀錄還沒載入完不掃，否則會把全部卡都當成新的
+        if (!warehouseStats.connected || !warehouseStats.stockoutCards) return; // 舊版 GAS 沒回報 → 跳過
+        if (!warehouseStats.stockoutCards.length) return;
+        autoSyncStockOutsInFlight = true;
+        try {
+            const already = new Set();
+            cloudLedgerRecords.forEach(r => {
+                if (r.tx_type === 'stock_out') {
+                    const m = String(r.note || '').match(/\[CARD:([^\]]+)\]/);
+                    if (m) already.add(m[1]);
+                }
+            });
+            const pending = warehouseStats.stockoutCards.filter(c => c.cardId && !already.has(String(c.cardId)));
+            if (pending.length === 0) return;
+            const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+            const rows = pending.map(c => ({
+                tx_date: today,
+                tx_type: 'stock_out',
+                account: 'B',
+                amount: Math.round(c.price) || 0,
+                card_qty: 1,
+                points_added: -(parseInt(c.pts) || POINTS_PER_CARD),
+                operator: '自動同步',
+                note: `偵測到 ${c.cardId} 號卡 G欄已標「${c.usage}」，自動記錄庫存轉出 [CARD:${c.cardId}]`
+            }));
+            const { error } = await supabaseClient.from('ledger_records').insert(rows);
+            if (error) throw error;
+            showToast(`📦 倉庫掃描：新偵測到 ${rows.length} 張「代抽/下游」卡，已自動記錄庫存轉出並回沖 B 帳`);
+            await fetchAllCloudData(); // 重新載入，讓總資產與庫存即時反映
+        } catch (err) {
+            console.warn('自動庫存轉出失敗:', err);
+        } finally {
+            autoSyncStockOutsInFlight = false;
         }
     }
 
@@ -664,11 +719,13 @@ create policy "Allow public access to ledger_records"
         let manualInB = 0, buyCardsCost = 0, withdrawB = 0;
         let totalAddedPoints = 0, totalBoughtCards = 0;
         let manualUnopenedAdjust = 0;
+        let totalStockOutPts = 0; // 代抽/下游轉出的點數 (已離開自用庫存池)
         let latestUnopenedUnitCost = 2085;
         let latestActiveUnitCost = 2080;
 
         // 建立 FIFO 批次真實成本佇列 (每一批皆記錄：剩餘點數 pts、該批買進單張價格 unitCost)
         let fifoBatches = [];
+        let runningB = 0; // 🧹 帳戶B 清空制：逐筆重放，買卡時不論實際花費直接歸零
 
         // 依時間由舊到新排列，讓先買進的卡排在佇列最前面優先扣點
         const sortedRecords = [...cloudLedgerRecords].reverse();
@@ -677,11 +734,12 @@ create policy "Allow public access to ledger_records"
             const pts = parseInt(r.points_added) || 0;
             const cards = parseInt(r.card_qty) || 0;
             if (r.tx_type === 'income') manualInA += amt;
-            else if (r.tx_type === 'transfer_a_to_b') transferToB += amt;
+            else if (r.tx_type === 'transfer_a_to_b') { transferToB += amt; runningB += amt; }
             else if (r.tx_type === 'withdraw_a') withdrawA += amt;
-            else if (r.tx_type === 'adjust_b') manualInB += amt;
+            else if (r.tx_type === 'adjust_b') { manualInB += amt; runningB += amt; }
             else if (r.tx_type === 'buy_cards') {
                 buyCardsCost += amt;
+                runningB = 0; // 🧹 進貨清空制：B 帳是流動帳（A撥補+代抽/下游預收），買卡時殘額一律吸收歸零
                 totalAddedPoints += pts;
                 totalBoughtCards += cards;
                 const unitCost = (cards > 0 && amt > 0) ? Math.round(amt / cards) : 2085;
@@ -694,8 +752,24 @@ create policy "Allow public access to ledger_records"
                         label: `$${unitCost}/張`
                     });
                 }
+            } else if (r.tx_type === 'stock_out') {
+                // 📦 代抽/下游用卡整卡轉出：非現金（B 是清空制，回沖會在下次進貨被靜默吃掉、搞歪總資產），
+                //    只把這幾張卡的點數從 FIFO 庫存佇列「尾端」移除——轉出的卡是最近一批買的，
+                //    客單消耗仍由佇列頭端（最舊批）扣除，兩者互不干擾
+                if (pts < 0) {
+                    let rem = -pts;
+                    for (let i = fifoBatches.length - 1; i >= 0 && rem > 0; i--) {
+                        if (fifoBatches[i].pts > 0) {
+                            const take = Math.min(fifoBatches[i].pts, rem);
+                            fifoBatches[i].pts -= take;
+                            rem -= take;
+                        }
+                    }
+                    totalStockOutPts += -pts;
+                }
             } else if (r.tx_type === 'withdraw_b') {
                 withdrawB += amt;
+                runningB -= amt;
                 totalAddedPoints += pts;
                 if (r.operator === '盤點校正' && r.note && r.note.includes('未開卡')) {
                     manualUnopenedAdjust += cards;
@@ -735,7 +809,7 @@ create policy "Allow public access to ledger_records"
 
         const autoOrderRev = includeAutoOrderRevenue ? completedOrdersStats.totalRevenue : 0;
         const balanceA = autoOrderRev + manualInA - transferToB - withdrawA;
-        const balanceB = transferToB + manualInB - buyCardsCost - withdrawB;
+        const balanceB = runningB; // 🧹 清空制餘額：上次進貨後 A 撥補/調整進來的殘額（進貨時已歸零重算）
 
         const consumedPts = completedOrdersStats.totalConsumedPoints;
         document.getElementById('wh-consumed-pts').textContent = `-${consumedPts.toLocaleString()} 點`;
@@ -751,7 +825,7 @@ create policy "Allow public access to ledger_records"
         const unopenedPts = unopenedCards * POINTS_PER_CARD;
         const totalPoolPts = warehouseStats.connected
             ? ((warehouseStats.unopenedSelfCards + warehouseStats.openedSelfCards) * POINTS_PER_CARD) + totalAddedPoints - (totalBoughtCards * POINTS_PER_CARD)
-            : totalAddedPoints;
+            : totalAddedPoints - totalStockOutPts; // 未連倉庫時：總點數需扣掉已轉出的代抽/下游卡
 
         const totalRemainPoints = totalPoolPts - consumedPts;
         const activeRemainPts = totalRemainPoints - unopenedPts;
@@ -928,7 +1002,8 @@ create policy "Allow public access to ledger_records"
             'withdraw_a': '<span class="px-2 py-0.5 bg-rose-100 text-rose-800 rounded text-xs font-bold">📤 A 提款/扣款</span>',
             'income': '<span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded text-xs font-bold">💰 A 手動入帳</span>',
             'adjust_b': '<span class="px-2 py-0.5 bg-amber-100 text-amber-800 rounded text-xs font-bold">🏦 B 手動入帳</span>',
-            'withdraw_b': '<span class="px-2 py-0.5 bg-gray-100 text-gray-800 rounded text-xs font-bold">📤 B 扣款/校正</span>'
+            'withdraw_b': '<span class="px-2 py-0.5 bg-gray-100 text-gray-800 rounded text-xs font-bold">📤 B 扣款/校正</span>',
+            'stock_out': '<span class="px-2 py-0.5 bg-orange-100 text-orange-800 rounded text-xs font-bold">📦 庫存轉出 (代抽/下游)</span>'
         };
 
         cloudLedgerRecords.forEach(r => {
@@ -957,6 +1032,10 @@ create policy "Allow public access to ledger_records"
                 accText = '帳戶 B 入帳';
                 amtFormatted = `+$${amt.toLocaleString()}`;
                 amtColor = 'text-amber-600';
+            } else if (r.tx_type === 'stock_out') {
+                accText = '庫存轉出 (非現金)';
+                amtFormatted = `$${amt.toLocaleString()}`;
+                amtColor = 'text-orange-600';
             }
 
             let ptsHtml = '<span class="text-gray-300">-</span>';
@@ -964,7 +1043,7 @@ create policy "Allow public access to ledger_records"
                 ptsHtml = `<span class="font-bold ${pts > 0 ? 'text-purple-700' : 'text-rose-600'}">${pts > 0 ? '+' : ''}${pts.toLocaleString()} 點 (${r.card_qty || 0}張)</span>`;
             }
 
-            const cleanNote = (r.note || '').replace(/\s*\[(VAL|BATCH|CONSUMED):[^\]]+\]/g, '');
+            const cleanNote = (r.note || '').replace(/\s*\[(VAL|BATCH|CONSUMED|CARD):[^\]]+\]/g, '');
 
             tr.innerHTML = `
                 <td class="py-2.5 px-3 text-xs text-gray-600 font-mono">${r.tx_date}</td>
@@ -1003,21 +1082,30 @@ create policy "Allow public access to ledger_records"
             'withdraw_a': '📤 帳戶A 提款 / 扣款',
             'income': '💰 帳戶A 手動入帳',
             'adjust_b': '🏦 帳戶B 手動入帳',
-            'withdraw_b': '📤 帳戶B 其他扣款'
+            'withdraw_b': '📤 帳戶B 其他扣款',
+            'stock_out': '📦 庫存轉出 (代抽/下游用卡)'
         };
 
         let card_qty = 0;
         let points_added = 0;
         let account = 'A';
 
-        if (tx_type === 'buy_cards') {
+        if (tx_type === 'buy_cards' || tx_type === 'stock_out') {
             const price = parseInt(document.getElementById('buy-card-price').value) || 2080;
             card_qty = parseInt(document.getElementById('buy-card-qty').value) || 0;
             points_added = card_qty * getBuyCardPtsPerCard();
             account = 'B';
 
+            // 📦 庫存轉出：點數記為負（從庫存佇列移除），非現金流水不影響帳戶餘額
+            if (tx_type === 'stock_out') {
+                points_added = -points_added;
+                if (card_qty > 0) {
+                    showToast('📦 已登記庫存轉出（僅扣庫存價值，不影響帳戶餘額）。注意：若這幾張卡的 G 欄已標「代抽/下游廠商」，下次同步倉庫時系統會自動記錄，手動這筆請先刪除，避免重複！');
+                }
+            }
+
             // 若有勾選「同步寫入 Google Sheet N卡序號倉庫」，直接執行批量開空位 + Gmail 抓信 + 通知牧宣
-            if (document.getElementById('sync-to-sheet').checked && card_qty > 0) {
+            if (tx_type === 'buy_cards' && document.getElementById('sync-to-sheet').checked && card_qty > 0) {
                 btn.textContent = '⏳ 正在寫入 Google Sheet N卡倉庫...';
                 try {
                     const sheetRes = await fetch(WAREHOUSE_GAS_URL, {
