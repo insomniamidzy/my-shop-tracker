@@ -535,7 +535,7 @@
 
                 const finalActionHtml = `
                     <div style="display: flex; flex-direction: column; gap: 6px;">
-                        <button class="btn-copy" onclick="copyUploadLink('${order.order_no}', this)">🔗 複製上傳網址</button>
+                        ${order.order_no ? `<a href="https://script.google.com/macros/s/AKfycbyBkdHaOLKtetFtUBctyx2cNaGFFPoh93SzhrvkghYshwi5gNs1PFe6YWUVL9Muk4_kbQ/exec?orderNo=${order.order_no}" target="_blank" rel="noopener noreferrer" class="btn-copy" style="display: block; text-align: center; text-decoration: none;">🔗 開啟上傳網址</a>` : ''}
                         ${viewProofBtnHtml}
                     </div>
                 `;
@@ -650,33 +650,6 @@
             
             document.getElementById('dash-month-label').innerText = dateLabel;
             document.getElementById('stats-dashboard').style.display = 'block';
-        }
-
-        function copyUploadLink(orderNo, btnElement) {
-            const gasWebAppUrl = 'https://script.google.com/macros/s/AKfycbyBkdHaOLKtetFtUBctyx2cNaGFFPoh93SzhrvkghYshwi5gNs1PFe6YWUVL9Muk4_kbQ/exec'; 
-            
-            if (!orderNo || orderNo === 'undefined') {
-                alert('這筆訂單沒有單號，無法產生網址！');
-                return;
-            }
-
-            const uploadUrl = `${gasWebAppUrl}?orderNo=${orderNo}`;
-            
-            navigator.clipboard.writeText(uploadUrl).then(() => {
-                const originalText = btnElement.innerText;
-                const originalBg = btnElement.style.background;
-                
-                btnElement.innerText = '✅ 已複製連結';
-                btnElement.style.background = '#28a745';
-                
-                setTimeout(() => {
-                    btnElement.innerText = originalText;
-                    btnElement.style.background = originalBg || '#17a2b8'; 
-                }, 2000);
-            }).catch(err => {
-                alert('複製失敗，請檢查瀏覽器權限。');
-                console.error('複製失敗:', err);
-            });
         }
 
         function exportToCSV() {
@@ -913,6 +886,21 @@
                         })
                     }).catch(e => console.log('派發通知失敗', e));
 
+                    if (currentCost > 0) {
+                        console.log('🔒 系統攔截：此單已扣過點數與成本，跳過重複扣款。');
+                    } else {
+                        const requiredPts = calculateOrderPoints(currentOrder.item_name, currentOrder.extra_gifts);
+                        if (requiredPts > 0) {
+                            fetch(GAS_URL, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                                body: JSON.stringify({ type: 'deduct_points', orderId: currentOrder.id, requiredPoints: requiredPts })
+                            }).catch(e => console.log('扣點請求失敗', e));
+                        }
+                    }
+                }
+                else if (newStatus === 'completed') {
+                    // 🔒 加固：直接切到「已完成」的單也要扣點（補上跳過「已派發」漏扣的單，例如 1905）
                     if (currentCost > 0) {
                         console.log('🔒 系統攔截：此單已扣過點數與成本，跳過重複扣款。');
                     } else {
