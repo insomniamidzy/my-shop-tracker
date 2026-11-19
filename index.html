@@ -536,6 +536,7 @@
                 const finalActionHtml = `
                     <div style="display: flex; flex-direction: column; gap: 6px;">
                         ${order.order_no ? `<a href="https://script.google.com/macros/s/AKfycbyBkdHaOLKtetFtUBctyx2cNaGFFPoh93SzhrvkghYshwi5gNs1PFe6YWUVL9Muk4_kbQ/exec?orderNo=${order.order_no}" target="_blank" rel="noopener noreferrer" class="btn-copy" style="display: block; text-align: center; text-decoration: none;">🔗 開啟上傳網址</a>` : ''}
+                        ${order.order_no ? `<button class="btn-copy" style="display: block; text-align: center;" onclick="copyUploadLink('${order.order_no}', this)">📋 複製上傳說明</button>` : ''}
                         ${viewProofBtnHtml}
                     </div>
                 `;
@@ -936,6 +937,22 @@
                 }
             }
             fetchOrders();
+        }
+
+        // ✨ 複製「上傳連結+指導語」：給客人的一份完整訊息，貼到 LINE/IG 就能用
+        function copyUploadLink(orderNo, btnElement) {
+            const uploadUrl = `https://script.google.com/macros/s/AKfycbyBkdHaOLKtetFtUBctyx2cNaGFFPoh93SzhrvkghYshwi5gNs1PFe6YWUVL9Muk4_kbQ/exec?orderNo=${orderNo}`;
+            const textToCopy = `📸 付款截圖上傳步驟\n\n` +
+                `1️⃣ 點開這個網址：${uploadUrl}\n` +
+                `2️⃣ 按「選擇檔案」，選你的付款截圖（手機可以直接拍照或從相簿挑）\n` +
+                `3️⃣ 按「上傳」，看到成功畫面就完成了\n\n` +
+                `✅ 上傳成功後我們會立刻確認款項，並盡快為你安排出貨，謝謝！`;
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                const originalText = btnElement.innerText;
+                btnElement.innerText = '✅ 已複製';
+                btnElement.style.background = '#28a745';
+                setTimeout(() => { btnElement.innerText = originalText; btnElement.style.background = ''; }, 2000);
+            }).catch(err => { alert('複製失敗，請檢查瀏覽器權限。'); });
         }
 
         function calculateOrderPoints(itemName, extraGifts) {
