@@ -895,6 +895,11 @@
                                 method: 'POST',
                                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                                 body: JSON.stringify({ type: 'deduct_points', orderId: currentOrder.id, requiredPoints: requiredPts })
+                            }).then(r => r.json()).then(d => {
+                                // ✨ 池子不足時後端不部分扣，改登記待扣佇列，補池後 5 分鐘內自動扣足
+                                if (d && d.queued) {
+                                    alert(`⏳ N卡池剩餘 ${d.poolPts} 點，此單應扣 ${d.requiredPoints} 點。\n已登記「待扣佇列」，補池後會自動扣足，訂單流程不受影響。`);
+                                }
                             }).catch(e => console.log('扣點請求失敗', e));
                         }
                     }
@@ -910,6 +915,11 @@
                                 method: 'POST',
                                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                                 body: JSON.stringify({ type: 'deduct_points', orderId: currentOrder.id, requiredPoints: requiredPts })
+                            }).then(r => r.json()).then(d => {
+                                // ✨ 池子不足時後端不部分扣，改登記待扣佇列，補池後 5 分鐘內自動扣足
+                                if (d && d.queued) {
+                                    alert(`⏳ N卡池剩餘 ${d.poolPts} 點，此單應扣 ${d.requiredPoints} 點。\n已登記「待扣佇列」，補池後會自動扣足，訂單流程不受影響。`);
+                                }
                             }).catch(e => console.log('扣點請求失敗', e));
                         }
                     }

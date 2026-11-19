@@ -423,6 +423,7 @@ create policy "Allow public access to ledger_records"
 
     let cloudLedgerRecords = [];
     let completedOrdersStats = { count: 0, totalRevenue: 0, totalConsumedPoints: 0, totalOrderCost: 0, deliveredCount: 0 };
+    let pendingDeductCount = 0; // ⏳ 待扣佇列：池子不足被登記、尚未補扣足的訂單數
     let ordersStatsLoaded = false; // 訂單統計是否已成功載入 (未載入前禁止盤點，避免把 [CONSUMED:0] 寫進 FIFO 基準)
     let ledgerRecordsLoaded = false; // 金流紀錄是否已載入 (未載入前禁止自動轉出掃描，避免重複記錄)
     let orderDetailList = [];      // 每筆訂單明細 (供流水帳彙整列點開查看)
@@ -611,6 +612,19 @@ create policy "Allow public access to ledger_records"
                     fallbackPts: [...fallbackOrderPts].reverse() // 轉成由舊到新，符合 FIFO 消耗順序
                 };
                 ordersStatsLoaded = true;
+            }
+
+            // 1.5 ⏳ 待扣佇列筆數：池子不足被登記、還沒扣足的訂單（補池後 GAS 每 5 分鐘自動扣）
+            //      required_points 欄位還沒建立時這查詢會失敗 → 靜默視為 0，不影響頁面
+            try {
+                const { count: qCount } = await supabaseClient.from('orders')
+                    .select('id', { count: 'exact', head: true })
+                    .not('required_points', 'is', null)
+                    .filter('used_cards', 'is', null)
+                    .in('status', ['delivered', 'completed']);
+                pendingDeductCount = qCount || 0;
+            } catch (qErr) {
+                pendingDeductCount = 0;
             }
 
             // 2. 讀取金流表 ledger_records
@@ -936,8 +950,9 @@ create policy "Allow public access to ledger_records"
         document.getElementById('card-inv-pts').textContent = `總庫存 ${totalRemainPoints.toLocaleString()} 點`;
 
         const dCount = completedOrdersStats.deliveredCount || 0;
+        const qTail = pendingDeductCount > 0 ? `・⏳ 待扣 ${pendingDeductCount} 筆` : '';
         document.getElementById('auto-order-summary-pill').textContent =
-            `${cutoffDate.slice(5)}起 已完成 ${completedOrdersStats.count} 筆・已派發 ${dCount} 筆 (實收 $${completedOrdersStats.totalRevenue.toLocaleString()} / 消耗 ${consumedPts.toLocaleString()} 點)`;
+            `${cutoffDate.slice(5)}起 已完成 ${completedOrdersStats.count} 筆・已派發 ${dCount} 筆 (實收 $${completedOrdersStats.totalRevenue.toLocaleString()} / 消耗 ${consumedPts.toLocaleString()} 點)${qTail}`;
 
         renderTable();
     }
