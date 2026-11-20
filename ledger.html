@@ -200,6 +200,7 @@
                     <option value="adjust_b">🏦 帳戶B 手動入帳</option>
                     <option value="withdraw_b">📤 帳戶B 其他扣款</option>
                     <option value="stock_out">📦 庫存轉出 (代抽/下游用卡)</option>
+                    <option value="boss_gift">🎁 老闆贈送 (送客戶點數)</option>
                 </select>
             </div>
 
@@ -210,12 +211,12 @@
             </div>
 
             <div id="card-qty-box" class="sm:col-span-1">
-                <label class="block text-xs font-bold text-purple-700 mb-1">購買張數</label>
+                <label id="qty-label" class="block text-xs font-bold text-purple-700 mb-1">購買張數</label>
                 <input type="number" id="buy-card-qty" value="14" min="1" oninput="recalcCardPurchase()" class="apple-input w-full font-bold text-purple-800 bg-purple-50">
             </div>
 
             <div id="card-pts-box" class="sm:col-span-2 hidden">
-                <label class="block text-xs font-bold text-purple-700 mb-1">每張點數 (預設 10200)</label>
+                <label id="pts-label" class="block text-xs font-bold text-purple-700 mb-1">每張點數 (預設 10200)</label>
                 <input type="number" id="buy-card-pts" value="10200" min="1" step="1" oninput="recalcCardPurchase()" class="apple-input w-full font-bold text-purple-800 bg-purple-50">
             </div>
 
@@ -485,16 +486,33 @@ create policy "Allow public access to ledger_records"
         const syncLabel = document.getElementById('sync-sheet-label');
         const btnSubmit = document.getElementById('btn-submit-tx');
 
-        if (type === 'buy_cards' || type === 'stock_out') {
-            priceBox.classList.remove('hidden');
+        const qtyLabel = document.getElementById('qty-label');
+        const ptsLabel = document.getElementById('pts-label');
+
+        if (type === 'buy_cards' || type === 'stock_out' || type === 'boss_gift') {
             qtyBox.classList.remove('hidden');
             ptsBox.classList.remove('hidden');
             if (type === 'buy_cards') {
+                priceBox.classList.remove('hidden');
                 syncLabel.classList.remove('hidden');
+                qtyLabel.textContent = '購買張數';
+                ptsLabel.textContent = '每張點數 (預設 10200)';
                 btnSubmit.textContent = '🚀 確認進貨 (扣B帳 + 寫入N卡倉庫)';
-            } else {
+            } else if (type === 'stock_out') {
+                priceBox.classList.remove('hidden');
                 syncLabel.classList.add('hidden');
+                qtyLabel.textContent = '轉出張數';
+                ptsLabel.textContent = '每張點數 (預設 10200)';
                 btnSubmit.textContent = '📦 確認庫存轉出 (不影響帳戶餘額)';
+            } else {
+                // 🎁 老闆贈送：以「份」計算，1 份 = 60回聲 = 扣池 120 點，非現金、不掛訂單
+                priceBox.classList.add('hidden');
+                syncLabel.classList.add('hidden');
+                qtyLabel.textContent = '贈送份數 (1份=60回聲)';
+                ptsLabel.textContent = '每份扣池點數 (60回聲=120點)';
+                document.getElementById('buy-card-qty').value = 1;
+                document.getElementById('buy-card-pts').value = 120;
+                btnSubmit.textContent = '🎁 確認老闆贈送 (只扣庫存價值)';
             }
             recalcCardPurchase();
         } else {
@@ -512,8 +530,16 @@ create policy "Allow public access to ledger_records"
         const price = parseInt(document.getElementById('buy-card-price').value) || 2080;
         const qty = parseInt(document.getElementById('buy-card-qty').value) || 0;
         const ptsPerCard = parseInt(document.getElementById('buy-card-pts').value) || POINTS_PER_CARD;
+        const txType = document.getElementById('tx-type').value;
+        if (txType === 'boss_gift') {
+            // 🎁 贈送：金額帶「估值參考」(以最新單價概算，實際估值下降以 FIFO 佇列為準)
+            const estVal = Math.round(qty * ptsPerCard / POINTS_PER_CARD * 2085);
+            document.getElementById('tx-amount').value = estVal;
+            document.getElementById('tx-note').value = `老闆贈送 ${qty} 份 (每份 ${ptsPerCard.toLocaleString()} 點，共 ${(qty * ptsPerCard).toLocaleString()} 點) — 只扣庫存價值，不掛訂單、不影響A/B帳`;
+            return;
+        }
         document.getElementById('tx-amount').value = price * qty;
-        const isStockOut = document.getElementById('tx-type').value === 'stock_out';
+        const isStockOut = txType === 'stock_out';
         document.getElementById('tx-note').value = isStockOut
             ? `代抽/下游轉出 ${qty} 張 N卡 ($${price}/張・每張 ${ptsPerCard.toLocaleString()} 點)`
             : `老闆進貨 ${qty} 張 N卡 ($${price}/張・每張 ${ptsPerCard.toLocaleString()} 點，共 ${(qty * ptsPerCard).toLocaleString()} 點)`;
@@ -744,6 +770,7 @@ create policy "Allow public access to ledger_records"
         let totalAddedPoints = 0, totalBoughtCards = 0;
         let manualUnopenedAdjust = 0;
         let totalStockOutPts = 0; // 代抽/下游轉出的點數 (已離開自用庫存池)
+        let totalBossGiftPts = 0; // 🎁 老闆贈送扣掉的點數 (送給客戶，無訂單對應)
         let latestUnopenedUnitCost = 2085;
         let latestActiveUnitCost = 2080;
 
@@ -790,6 +817,20 @@ create policy "Allow public access to ledger_records"
                         }
                     }
                     totalStockOutPts += -pts;
+                }
+            } else if (r.tx_type === 'boss_gift') {
+                // 🎁 老闆贈送：非現金（不動 A/B 帳），點數從 FIFO 佇列「頭端」移除——
+                //    老闆送禮跟客單一樣是從最舊批的卡消耗，庫存估值隨佇列縮小自動下降
+                if (pts < 0) {
+                    let rem = -pts;
+                    for (let i = 0; i < fifoBatches.length && rem > 0; i++) {
+                        if (fifoBatches[i].pts > 0) {
+                            const take = Math.min(fifoBatches[i].pts, rem);
+                            fifoBatches[i].pts -= take;
+                            rem -= take;
+                        }
+                    }
+                    totalBossGiftPts += -pts;
                 }
             } else if (r.tx_type === 'withdraw_b') {
                 withdrawB += amt;
@@ -848,8 +889,8 @@ create policy "Allow public access to ledger_records"
 
         const unopenedPts = unopenedCards * POINTS_PER_CARD;
         const totalPoolPts = warehouseStats.connected
-            ? ((warehouseStats.unopenedSelfCards + warehouseStats.openedSelfCards) * POINTS_PER_CARD) + totalAddedPoints - (totalBoughtCards * POINTS_PER_CARD)
-            : totalAddedPoints - totalStockOutPts; // 未連倉庫時：總點數需扣掉已轉出的代抽/下游卡
+            ? ((warehouseStats.unopenedSelfCards + warehouseStats.openedSelfCards) * POINTS_PER_CARD) + totalAddedPoints - (totalBoughtCards * POINTS_PER_CARD) - totalBossGiftPts
+            : totalAddedPoints - totalStockOutPts - totalBossGiftPts; // 未連倉庫時：總點數需扣掉已轉出的代抽/下游卡與老闆贈送
 
         const totalRemainPoints = totalPoolPts - consumedPts;
         const activeRemainPts = totalRemainPoints - unopenedPts;
@@ -1036,7 +1077,8 @@ create policy "Allow public access to ledger_records"
             'income': '<span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded text-xs font-bold">💰 A 手動入帳</span>',
             'adjust_b': '<span class="px-2 py-0.5 bg-amber-100 text-amber-800 rounded text-xs font-bold">🏦 B 手動入帳</span>',
             'withdraw_b': '<span class="px-2 py-0.5 bg-gray-100 text-gray-800 rounded text-xs font-bold">📤 B 扣款/校正</span>',
-            'stock_out': '<span class="px-2 py-0.5 bg-orange-100 text-orange-800 rounded text-xs font-bold">📦 庫存轉出 (代抽/下游)</span>'
+            'stock_out': '<span class="px-2 py-0.5 bg-orange-100 text-orange-800 rounded text-xs font-bold">📦 庫存轉出 (代抽/下游)</span>',
+            'boss_gift': '<span class="px-2 py-0.5 bg-pink-100 text-pink-800 rounded text-xs font-bold">🎁 老闆贈送</span>'
         };
 
         // 帳戶/金額欄位顯示規則 (依類型)
@@ -1065,6 +1107,10 @@ create policy "Allow public access to ledger_records"
                 accText = '庫存轉出 (非現金)';
                 amtFormatted = `$${amt.toLocaleString()}`;
                 amtColor = 'text-orange-600';
+            } else if (tx_type === 'boss_gift') {
+                accText = '老闆贈送 (非現金)';
+                amtFormatted = `$${amt.toLocaleString()}`;
+                amtColor = 'text-pink-600';
             }
             return { accText, amtFormatted, amtColor };
         }
@@ -1168,14 +1214,15 @@ create policy "Allow public access to ledger_records"
             'income': '💰 帳戶A 手動入帳',
             'adjust_b': '🏦 帳戶B 手動入帳',
             'withdraw_b': '📤 帳戶B 其他扣款',
-            'stock_out': '📦 庫存轉出 (代抽/下游用卡)'
+            'stock_out': '📦 庫存轉出 (代抽/下游用卡)',
+            'boss_gift': '🎁 老闆贈送 (送客戶點數)'
         };
 
         let card_qty = 0;
         let points_added = 0;
         let account = 'A';
 
-        if (tx_type === 'buy_cards' || tx_type === 'stock_out') {
+        if (tx_type === 'buy_cards' || tx_type === 'stock_out' || tx_type === 'boss_gift') {
             const price = parseInt(document.getElementById('buy-card-price').value) || 2080;
             card_qty = parseInt(document.getElementById('buy-card-qty').value) || 0;
             points_added = card_qty * getBuyCardPtsPerCard();
@@ -1186,6 +1233,15 @@ create policy "Allow public access to ledger_records"
                 points_added = -points_added;
                 if (card_qty > 0) {
                     showToast('📦 已登記庫存轉出（僅扣庫存價值，不影響帳戶餘額）。注意：若這幾張卡的 G 欄已標「代抽/下游廠商」，下次同步倉庫時系統會自動記錄，手動這筆請先刪除，避免重複！');
+                }
+            }
+
+            // 🎁 老闆贈送：點數記為負（從 FIFO 佇列「頭端」移除），非現金、不掛訂單、不動A/B帳。
+            //    ⚠️ 這筆與訂單的 extra_gifts 互斥：同一份禮只能記一邊，兩邊都記會重複扣 120 點
+            if (tx_type === 'boss_gift') {
+                points_added = -points_added;
+                if (card_qty > 0) {
+                    showToast('🎁 已登記老闆贈送（庫存估值自動下降，A/B 帳不動、訂單成本不變）。注意：這筆禮不要再填到訂單的 extra_gifts，兩邊都記會重複扣點！');
                 }
             }
 
